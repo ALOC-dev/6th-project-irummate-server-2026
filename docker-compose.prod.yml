@@ -1,0 +1,66 @@
+# 배포용 (AWS EC2 + RDS)
+# 실행: docker compose -f docker-compose.prod.yml up -d --build
+services:
+  app:
+    image: ghcr.io/aloc-dev/irummate-server:latest
+    container_name: irummate-app
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      TZ: Asia/Seoul
+      JAVA_TOOL_OPTIONS: >-
+        -Duser.timezone=Asia/Seoul
+        -Xms512m
+        -Xmx1024m
+      DB_URL: ${DB_URL}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      KAKAO_CLIENT_ID: ${KAKAO_CLIENT_ID}
+      KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET}
+      KAKAO_REDIRECT_URI: ${KAKAO_REDIRECT_URI}
+      KAKAO_ADMIN_KEY: ${KAKAO_ADMIN_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ACCESS_TOKEN_EXPIRATION: ${JWT_ACCESS_TOKEN_EXPIRATION:-3600000}
+      JWT_REFRESH_TOKEN_EXPIRATION: ${JWT_REFRESH_TOKEN_EXPIRATION:-1209600000}
+      HASHIDS_SALT: ${HASHIDS_SALT}
+      HASHIDS_MIN_LENGTH: ${HASHIDS_MIN_LENGTH:-8}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: irummate-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./certbot-www:/var/www/certbot:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - app
+    command: >-
+      /bin/sh -c "while :; do sleep 6h & wait $${!}; nginx -s reload; done
+      & nginx -g 'daemon off;'"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # 인증서 자동 갱신 (12시간마다 만료 여부 확인)
+  certbot:
+    image: certbot/certbot
+    container_name: irummate-certbot
+    restart: unless-stopped
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt
+      - ./certbot-www:/var/www/certbot
+    entrypoint: >-
+      /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot
+      -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done"

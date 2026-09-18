@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Chat WebSocket Test</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.1/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 720px;
+            margin: 40px auto;
+            line-height: 1.5;
+        }
+
+        label {
+            display: block;
+            margin-top: 12px;
+            font-weight: 700;
+        }
+
+        input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 8px;
+            margin-top: 4px;
+        }
+
+        button {
+            margin-top: 12px;
+            padding: 8px 12px;
+            cursor: pointer;
+        }
+
+        #status {
+            margin-top: 16px;
+            font-weight: 700;
+        }
+
+        #messages {
+            padding-left: 20px;
+        }
+    </style>
+</head>
+<body>
+<h2>Chat WebSocket Test</h2>
+
+<label for="roomId">Room ID</label>
+<input id="roomId" type="number" value="1">
+
+<label for="senderId">Sender ID</label>
+<input id="senderId" type="number" value="1">
+
+<label for="messageInput">Message</label>
+<input id="messageInput" type="text" placeholder="메시지를 입력하세요">
+
+<button onclick="connect()">Connect & Subscribe</button>
+<button onclick="sendMessage()">Send</button>
+<button onclick="disconnect()">Disconnect</button>
+
+<div id="status">Disconnected</div>
+
+<h3>Received Messages</h3>
+<ul id="messages"></ul>
+
+<script>
+    let stompClient = null;
+    let subscribedRoomId = null;
+
+    function connect() {
+        const roomId = document.getElementById("roomId").value;
+        const socket = new SockJS("http://localhost:8080/ws-stomp");
+        stompClient = Stomp.over(socket);
+
+        stompClient.connect({}, function (frame) {
+            subscribedRoomId = roomId;
+            setStatus("Connected: " + frame);
+
+            stompClient.subscribe("/topic/chat/rooms/" + roomId, function (message) {
+                const receivedData = JSON.parse(message.body);
+                appendMessage(receivedData);
+            });
+        }, function (error) {
+            console.error("WebSocket connection error:", error);
+            setStatus("Connection failed");
+        });
+    }
+
+    function sendMessage() {
+        if (!stompClient || !stompClient.connected) {
+            alert("먼저 Connect를 눌러주세요.");
+            return;
+        }
+
+        const roomId = document.getElementById("roomId").value;
+        const senderId = Number(document.getElementById("senderId").value);
+        const message = document.getElementById("messageInput").value;
+
+        const payload = {
+            senderId: senderId,
+            message: message
+        };
+
+        stompClient.send(
+            "/app/chat/rooms/" + roomId + "/send",
+            {},
+            JSON.stringify(payload)
+        );
+
+        document.getElementById("messageInput").value = "";
+    }
+
+    function disconnect() {
+        if (stompClient) {
+            stompClient.disconnect(function () {
+                setStatus("Disconnected");
+            });
+        }
+    }
+
+    function appendMessage(data) {
+        const li = document.createElement("li");
+        li.textContent =
+            "messageId=" + data.messageId +
+            ", senderId=" + data.senderId +
+            ", message=" + data.message +
+            ", createdAt=" + data.createdAt +
+            ", isRead=" + data.isRead;
+        document.getElementById("messages").appendChild(li);
+    }
+
+    function setStatus(text) {
+        document.getElementById("status").textContent = text;
+    }
+</script>
+</body>
+</html>
