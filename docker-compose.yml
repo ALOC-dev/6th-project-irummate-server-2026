@@ -1,7 +1,7 @@
 services:
   postgres:
     image: pgvector/pgvector:pg17
-    container_name: dormmatch-postgres
+    container_name: irummate-postgres
     restart: unless-stopped
     ports:
       - "5432:5432"
@@ -13,7 +13,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dormmatch -d dormmatch"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_USERNAME}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -21,7 +21,7 @@ services:
   # Redis 추가 시 아래 주석 해제
   # redis:
   #   image: redis:7-alpine
-  #   container_name: dormmatch-redis
+  #   container_name: irummate-redis
   #   restart: unless-stopped
   #   ports:
   #     - "6379:6379"

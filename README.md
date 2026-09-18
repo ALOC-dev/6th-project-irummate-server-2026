@@ -192,8 +192,8 @@ src/main/java/com/irummate/
 ### 1. 저장소 클론
 
 ```bash
-git clone https://github.com/ALOC-dev/5th-project-yulgok-server-2026.git
-cd 5th-project-yulgok-server-2026
+git clone https://github.com/ALOC-dev/6th-project-irummate-server-2026.git
+cd 6th-project-irummate-server-2026
 ```
 
 ### 2. 환경 변수 설정
