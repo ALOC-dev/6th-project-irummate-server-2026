@@ -4,12 +4,14 @@ import com.irummate.domain.matching.entity.MatchRequests;
 import com.irummate.domain.matching.entity.MatchStatus;
 import com.irummate.domain.matching.repository.MatchRepository;
 import com.irummate.domain.matching.service.MatchingService;
+import com.irummate.domain.chat.service.ChatService;
 import com.irummate.domain.survey.entity.UserPreferences;
 import com.irummate.domain.survey.repository.UserPreferencesRepository;
 import com.irummate.domain.user.entity.UserDetails;
 import com.irummate.domain.user.entity.Users;
 import com.irummate.domain.user.repository.UsersRepository;
 import com.irummate.global.exception.BusinessException;
+import com.irummate.global.util.HashIdsUtils;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -37,6 +39,12 @@ public class MatchServiceTest {
 
     @Mock
     private UsersRepository usersRepository;
+
+    @Mock
+    private ChatService chatService;
+
+    @Mock
+    private HashIdsUtils hashIdsUtils;
 
     @InjectMocks
     private MatchingService matchingService;
@@ -83,6 +91,8 @@ public class MatchServiceTest {
 
         when(userPreferencesRepository.findByUserIdWithUserDetails(myUserId))
                 .thenReturn(Optional.of(myPreference));
+        when(userPreferencesRepository.findByUserIdForUpdate(myUserId))
+                .thenReturn(Optional.of(myPreference));
 
         when(matchRepository.findReusableCandidatesWithSmoking(eq(myUserId), eq(1), any(Pageable.class)))
                 .thenReturn(List.of());
@@ -117,7 +127,7 @@ public class MatchServiceTest {
         matchingService.match(myUserId);
 
         // then
-        verify(matchRepository, times(3)).save(captor.capture());
+        verify(matchRepository, times(3)).saveAndFlush(captor.capture());
         verify(myPreference).updateIsRerolled();
 
         List<MatchRequests> saved = captor.getAllValues();
@@ -175,6 +185,8 @@ public class MatchServiceTest {
 
         when(userPreferencesRepository.findByUserIdWithUserDetails(myUserId))
                 .thenReturn(Optional.of(myPreference));
+        when(userPreferencesRepository.findByUserIdForUpdate(myUserId))
+                .thenReturn(Optional.of(myPreference));
 
         when(matchRepository.findReusableCandidatesWithSmoking(eq(myUserId), eq(1), any(Pageable.class)))
                 .thenReturn(List.of());
@@ -221,7 +233,7 @@ public class MatchServiceTest {
 
         matchingService.match(myUserId);
 
-        verify(matchRepository, times(3)).save(captor.capture());
+        verify(matchRepository, times(3)).saveAndFlush(captor.capture());
         verify(myPreference).updateIsRerolled();
 
         List<MatchRequests> saved = captor.getAllValues();
@@ -277,6 +289,8 @@ public class MatchServiceTest {
 
         when(userPreferencesRepository.findByUserIdWithUserDetails(myUserId))
                 .thenReturn(Optional.of(myPreference));
+        when(userPreferencesRepository.findByUserIdForUpdate(myUserId))
+                .thenReturn(Optional.of(myPreference));
 
         when(matchRepository.findReusableCandidatesWithSmoking(eq(myUserId), eq(1), any(Pageable.class)))
                 .thenReturn(List.of());
@@ -320,7 +334,7 @@ public class MatchServiceTest {
 
         matchingService.match(myUserId);
 
-        verify(matchRepository, times(2)).save(captor.capture());
+        verify(matchRepository, times(2)).saveAndFlush(captor.capture());
         verify(myPreference).updateIsRerolled();
 
         List<MatchRequests> saved = captor.getAllValues();
@@ -367,6 +381,8 @@ public class MatchServiceTest {
 
         when(userPreferencesRepository.findByUserIdWithUserDetails(myUserId))
                 .thenReturn(Optional.of(myPreference));
+        when(userPreferencesRepository.findByUserIdForUpdate(myUserId))
+                .thenReturn(Optional.of(myPreference));
 
         when(matchRepository.findReusableCandidatesWithSmoking(eq(myUserId), eq(1), any(Pageable.class)))
                 .thenReturn(List.of());
@@ -400,7 +416,7 @@ public class MatchServiceTest {
         assertThatThrownBy(() -> matchingService.match(myUserId))
                 .isInstanceOf(BusinessException.class);
 
-        verify(matchRepository,never()).save(any());
+        verify(matchRepository,never()).saveAndFlush(any());
         verify(myPreference, never()).updateIsRerolled();
     }
 

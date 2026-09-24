@@ -6,6 +6,9 @@ import com.irummate.domain.user.repository.UsersRepository;
 import com.irummate.global.jwt.JwtTokenProvider;
 import com.irummate.global.jwt.WebSocketPrincipal;
 import com.irummate.global.util.HashIdsUtils;
+import com.irummate.global.exception.BusinessException;
+import com.irummate.global.exception.ErrorCode;
+import com.irummate.global.websocket.WebSocketStompErrorHandler;
 import io.jsonwebtoken.Claims;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.Message;
@@ -34,19 +37,24 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private final ChatRoomRepository chatRoomRepository;
     private final UsersRepository usersRepository;
     private final HashIdsUtils hashIdsUtils;
+    private final WebSocketStompErrorHandler stompErrorHandler;
 
     public WebSocketConfig(JwtTokenProvider jwtTokenProvider,
                             ChatRoomRepository chatRoomRepository,
                             UsersRepository usersRepository,
-                            HashIdsUtils hashIdsUtils) {
+                            HashIdsUtils hashIdsUtils,
+                            WebSocketStompErrorHandler stompErrorHandler) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.chatRoomRepository = chatRoomRepository;
         this.usersRepository = usersRepository;
         this.hashIdsUtils = hashIdsUtils;
+        this.stompErrorHandler = stompErrorHandler;
     }
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
+        registry.setErrorHandler(stompErrorHandler);
+
         // 프론트에서 최초로 웹소켓 연결을 맺는 endpoint
         registry.addEndpoint("/ws/chat")
                 // 프론트 로컬 개발 서버와 백엔드 정적 테스트 페이지에서만 웹소켓 연결을 허용한다.
@@ -69,7 +77,11 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
-        registration.interceptors(new ChannelInterceptor() {
+        registration.interceptors(createInboundInterceptor());
+    }
+
+    ChannelInterceptor createInboundInterceptor() {
+        return new ChannelInterceptor() {
             @Override
             public Message<?> preSend(Message<?> message, MessageChannel channel) {
                 StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
@@ -82,14 +94,19 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                     String token = resolveToken(accessor);
 
                     if (token == null || !jwtTokenProvider.validateAccessToken(token)) {
-                        throw new IllegalArgumentException("웹소켓 인증에 실패했습니다.");
+                        throw new BusinessException(ErrorCode.WEBSOCKET_UNAUTHORIZED);
                     }
 
-                    Claims claims = jwtTokenProvider.parseClaims(token);
-                    Long userId = hashIdsUtils.decode(claims.getSubject());
+                    Long userId;
+                    try {
+                        Claims claims = jwtTokenProvider.parseClaims(token);
+                        userId = hashIdsUtils.decode(claims.getSubject());
+                    } catch (RuntimeException e) {
+                        throw new BusinessException(ErrorCode.WEBSOCKET_UNAUTHORIZED);
+                    }
 
                     if (!isActiveUser(userId)) {
-                        throw new IllegalArgumentException("WebSocket user is not active.");
+                        throw new BusinessException(ErrorCode.WEBSOCKET_UNAUTHORIZED);
                     }
 
                     accessor.setUser(new WebSocketPrincipal(userId));
@@ -101,7 +118,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
                 return message;
             }
-        });
+        };
     }
 
     private boolean isActiveUser(Long userId) {
@@ -115,14 +132,18 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         String destination = accessor.getDestination();
 
         if (destination == null) {
-            return;
+            throw new BusinessException(ErrorCode.INVALID_WEBSOCKET_DESTINATION);
         }
 
         if (destination.startsWith(ROOM_TOPIC_PREFIX)) {
             Long roomId = parseDestinationId(destination, ROOM_TOPIC_PREFIX);
 
+            if (!chatRoomRepository.existsById(roomId)) {
+                throw new BusinessException(ErrorCode.CHAT_ROOM_NOT_FOUND);
+            }
+
             if (!chatRoomRepository.existsByRoomIdAndParticipantId(roomId, userId)) {
-                throw new IllegalArgumentException("구독 권한이 없는 채팅방입니다.");
+                throw new BusinessException(ErrorCode.NOT_CHAT_PARTICIPANT);
             }
 
             return;
@@ -132,13 +153,13 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
             Long destinationUserId = parseHashedDestinationUserId(destination);
 
             if (!destinationUserId.equals(userId)) {
-                throw new IllegalArgumentException("구독 권한이 없는 개인 알림입니다.");
+                throw new BusinessException(ErrorCode.FORBIDDEN);
             }
 
             return;
         }
 
-        throw new IllegalArgumentException("Invalid subscription destination.");
+        throw new BusinessException(ErrorCode.INVALID_WEBSOCKET_DESTINATION);
     }
 
     private Long resolveUserId(Principal principal) {
@@ -146,22 +167,22 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
             return webSocketPrincipal.getUserId();
         }
 
-        throw new IllegalArgumentException("웹소켓 인증에 실패했습니다.");
+        throw new BusinessException(ErrorCode.WEBSOCKET_UNAUTHORIZED);
     }
 
     private Long parseDestinationId(String destination, String prefix) {
         try {
             return Long.valueOf(destination.substring(prefix.length()));
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("잘못된 구독 주소입니다.");
+        } catch (RuntimeException e) {
+            throw new BusinessException(ErrorCode.INVALID_WEBSOCKET_DESTINATION);
         }
     }
 
     private Long parseHashedDestinationUserId(String destination) {
         try {
             return hashIdsUtils.decode(destination.substring(USER_QUEUE_PREFIX.length()));
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("잘못된 구독 주소입니다.");
+        } catch (RuntimeException e) {
+            throw new BusinessException(ErrorCode.INVALID_WEBSOCKET_DESTINATION);
         }
     }
 

@@ -2,15 +2,16 @@ package com.irummate.domain.chat.controller;
 
 import com.irummate.domain.chat.dto.ChatMessagesResponseDto;
 import com.irummate.domain.chat.dto.ChatReadResponseDto;
+import com.irummate.domain.chat.dto.ChatReadResult;
 import com.irummate.domain.chat.dto.ChatRoomsResponseDto;
 import com.irummate.domain.chat.dto.ChatUnreadCountResponseDto;
 import com.irummate.domain.chat.service.ChatService;
-import com.irummate.global.aop.RequiresAuth;
 import com.irummate.global.aop.RequiresCertification;
 import com.irummate.global.response.GlobalApiResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,9 +24,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class ChatController {
 
     private final ChatService chatService;
+    private final SimpMessagingTemplate messagingTemplate;
 
-    public ChatController(ChatService chatService) {
+    public ChatController(ChatService chatService, SimpMessagingTemplate messagingTemplate) {
         this.chatService = chatService;
+        this.messagingTemplate = messagingTemplate;
     }
 
     @RequiresCertification
@@ -61,10 +64,14 @@ public class ChatController {
             @PathVariable Long roomId,
             @AuthenticationPrincipal Long userId
     ) {
-        ChatReadResponseDto responseDto = chatService.markMessagesAsRead(roomId, userId);
+        ChatReadResult result = chatService.markMessagesAsRead(roomId, userId);
+
+        if (result.event() != null) {
+            messagingTemplate.convertAndSend("/topic/room/" + roomId, result.event());
+        }
 
         return ResponseEntity.ok(
-                GlobalApiResponse.success(HttpStatus.OK, "메시지 읽음 처리 성공", responseDto)
+                GlobalApiResponse.success(HttpStatus.OK, "메시지 읽음 처리 성공", result.response())
         );
     }
 

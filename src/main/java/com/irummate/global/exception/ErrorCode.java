@@ -17,6 +17,7 @@ public enum ErrorCode {
     PAST_DATE_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "과거 날짜는 설정할 수 없습니다."),
     EMPTY_CHAT_MESSAGE(HttpStatus.BAD_REQUEST, "채팅 메시지가 내용이 비어있습니다."),
     CHAT_MESSAGE_TOO_LONG(HttpStatus.BAD_REQUEST, "채팅 메시지는 500자를 초과할 수 없습니다"),
+    INVALID_WEBSOCKET_DESTINATION(HttpStatus.BAD_REQUEST, "유효하지 않은 웹소켓 구독 주소입니다."),
 
     // ── 401 ──
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증이 필요합니다."),
