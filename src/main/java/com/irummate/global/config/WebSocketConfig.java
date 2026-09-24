@@ -32,6 +32,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private static final String BEARER_PREFIX = "Bearer ";
     private static final String ROOM_TOPIC_PREFIX = "/topic/room/";
     private static final String USER_QUEUE_PREFIX = "/queue/user/";
+    private static final String CHAT_ERROR_DESTINATION = "/user/queue/chat-errors";
 
     private final JwtTokenProvider jwtTokenProvider;
     private final ChatRoomRepository chatRoomRepository;
@@ -133,6 +134,10 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
         if (destination == null) {
             throw new BusinessException(ErrorCode.INVALID_WEBSOCKET_DESTINATION);
+        }
+
+        if (CHAT_ERROR_DESTINATION.equals(destination)) {
+            return;
         }
 
         if (destination.startsWith(ROOM_TOPIC_PREFIX)) {

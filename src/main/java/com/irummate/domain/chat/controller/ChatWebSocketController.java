@@ -9,9 +9,12 @@ import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
 import com.irummate.global.jwt.WebSocketPrincipal;
 import com.irummate.global.util.HashIdsUtils;
+import com.irummate.global.websocket.WebSocketErrorResponseDto;
+import org.springframework.messaging.handler.annotation.MessageExceptionHandler;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.messaging.simp.annotation.SendToUser;
 import org.springframework.stereotype.Controller;
 
 import java.security.Principal;
@@ -58,6 +61,15 @@ public class ChatWebSocketController {
 
         messagingTemplate.convertAndSend("/topic/room/" + roomId, messageEvent);
         messagingTemplate.convertAndSend("/queue/user/" + encodedPartnerId, notificationDto);
+    }
+
+    @MessageExceptionHandler(BusinessException.class)
+    @SendToUser(destinations = "/queue/chat-errors", broadcast = false)
+    public WebSocketErrorResponseDto handleChatBusinessException(BusinessException exception) {
+        return new WebSocketErrorResponseDto(
+                exception.getErrorCode().name(),
+                exception.getMessage()
+        );
     }
 
     private Long resolveSenderId(Principal principal) {

@@ -18,6 +18,7 @@ import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -73,6 +74,28 @@ class WebSocketConfigTest {
         assertThatThrownBy(() -> inboundInterceptor().preSend(message, channel))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         org.assertj.core.api.Assertions.assertThat(exception.getErrorCode())
+                                .isEqualTo(ErrorCode.INVALID_WEBSOCKET_DESTINATION));
+    }
+
+    @Test
+    void allowsOnlyExactChatErrorUserDestination() {
+        Message<byte[]> allowed = stompMessage(
+                StompCommand.SUBSCRIBE,
+                "/user/queue/chat-errors",
+                new WebSocketPrincipal(2L)
+        );
+
+        assertThat(inboundInterceptor().preSend(allowed, channel)).isSameAs(allowed);
+
+        Message<byte[]> arbitraryUserDestination = stompMessage(
+                StompCommand.SUBSCRIBE,
+                "/user/queue/other-errors",
+                new WebSocketPrincipal(2L)
+        );
+
+        assertThatThrownBy(() -> inboundInterceptor().preSend(arbitraryUserDestination, channel))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode())
                                 .isEqualTo(ErrorCode.INVALID_WEBSOCKET_DESTINATION));
     }
 
