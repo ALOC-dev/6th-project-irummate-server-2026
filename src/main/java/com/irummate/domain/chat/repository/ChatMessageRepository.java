@@ -5,6 +5,7 @@ import com.irummate.domain.chat.dto.ChatRoomUnreadCountDto;
 import com.irummate.domain.chat.entity.ChatMessage;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -64,8 +65,34 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
             """)
     int countUnreadByParticipantId(@Param("userId") Long userId);
 
-    // 읽음 처리 대상 메시지를 조회한다.
-    List<ChatMessage> findByRoomIdAndSenderIdNotAndIsReadFalse(Long roomId, Long senderId);
+    // 현재 시점에 읽음 처리할 메시지 중 가장 큰 ID를 조회한다.
+    @Query("""
+            SELECT MAX(cm.id)
+            FROM ChatMessage cm
+            WHERE cm.roomId = :roomId
+              AND cm.senderId <> :userId
+              AND cm.isRead = false
+            """)
+    Optional<Long> findLastUnreadMessageId(
+            @Param("roomId") Long roomId,
+            @Param("userId") Long userId
+    );
+
+    // 조회한 경계 ID까지의 상대방 메시지를 한 번의 UPDATE로 읽음 처리한다.
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE ChatMessage cm
+            SET cm.isRead = true
+            WHERE cm.roomId = :roomId
+              AND cm.senderId <> :userId
+              AND cm.isRead = false
+              AND cm.id <= :lastReadMessageId
+            """)
+    int markUnreadMessagesAsRead(
+            @Param("roomId") Long roomId,
+            @Param("userId") Long userId,
+            @Param("lastReadMessageId") Long lastReadMessageId
+    );
 
     // 채팅방 목록에 표시할 각 방의 마지막 메시지를 한 번에 조회한다.
     @Query("""

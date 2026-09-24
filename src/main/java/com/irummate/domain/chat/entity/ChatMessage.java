@@ -50,8 +50,4 @@ public class ChatMessage {
         this.createdAt = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
     }
 
-    public void markAsRead()
-    {
-        this.isRead = true;
-    }
 }

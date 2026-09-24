@@ -4,6 +4,8 @@ import com.irummate.domain.chat.dto.ChatMessageResponseDto;
 import com.irummate.domain.chat.dto.ChatMessagesResponseDto;
 import com.irummate.domain.chat.dto.ChatNotificationDto;
 import com.irummate.domain.chat.dto.ChatReadResponseDto;
+import com.irummate.domain.chat.dto.ChatReadEventDto;
+import com.irummate.domain.chat.dto.ChatReadResult;
 import com.irummate.domain.chat.dto.ChatRoomLastMessageDto;
 import com.irummate.domain.chat.dto.ChatRoomPartnerDto;
 import com.irummate.domain.chat.dto.ChatRoomResponseDto;
@@ -29,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Comparator;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -101,6 +104,12 @@ public class ChatService {
                             canConfirm(room.myMatchStatus(), room.partnerMatchStatus())
                     );
                 })
+                .sorted(Comparator
+                        .comparing(
+                                ChatRoomResponseDto::getLastMessageTime,
+                                Comparator.nullsLast(Comparator.reverseOrder())
+                        )
+                        .thenComparing(ChatRoomResponseDto::getRoomId, Comparator.reverseOrder()))
                 .toList();
 
         return new ChatRoomsResponseDto(rooms);
@@ -143,17 +152,29 @@ public class ChatService {
     }
 
     @Transactional
-    public ChatReadResponseDto markMessagesAsRead(Long roomId, Long userId) {
+    public ChatReadResult markMessagesAsRead(Long roomId, Long userId) {
         validateRoomExists(roomId);
         validateRoomParticipant(roomId, userId);
 
-        // 내가 보낸 메시지는 읽음 처리 대상에서 제외한다.
-        List<ChatMessage> unreadMessages =
-                chatMessageRepository.findByRoomIdAndSenderIdNotAndIsReadFalse(roomId, userId);
+        Long lastReadMessageId = chatMessageRepository.findLastUnreadMessageId(roomId, userId)
+                .orElse(null);
 
-        unreadMessages.forEach(ChatMessage::markAsRead);
+        if (lastReadMessageId == null) {
+            return new ChatReadResult(new ChatReadResponseDto(true), null);
+        }
 
-        return new ChatReadResponseDto(true);
+        int updatedCount = chatMessageRepository.markUnreadMessagesAsRead(roomId, userId, lastReadMessageId);
+        if (updatedCount == 0) {
+            return new ChatReadResult(new ChatReadResponseDto(true), null);
+        }
+
+        ChatReadEventDto event = ChatReadEventDto.of(
+                roomId,
+                hashIdsUtils.encode(userId),
+                lastReadMessageId
+        );
+
+        return new ChatReadResult(new ChatReadResponseDto(true), event);
     }
 
     @Transactional(readOnly = true)
@@ -191,9 +212,10 @@ public class ChatService {
 
     @Transactional
     public ChatMessageResponseDto sendMessage(Long roomId, Long senderId, String message) {
+        validateSendRequest(roomId, senderId, message);
         ChatRoom chatRoom = getChatRoom(roomId);
         validateCertifiedUser(senderId);
-        validateSendable(chatRoom, senderId, message);
+        validateSendable(chatRoom);
         validateRoomParticipant(roomId, senderId);
 
         ChatMessage chatMessage = ChatMessage.create(roomId, senderId, message.trim());
@@ -268,12 +290,8 @@ public class ChatService {
         }
     }
 
-    private void validateSendable(ChatRoom chatRoom, Long senderId, String message) {
-        if (chatRoom.isClosed()) {
-            throw new BusinessException(ErrorCode.CHAT_ROOM_CLOSED);
-        }
-
-        if (senderId == null) {
+    private void validateSendRequest(Long roomId, Long senderId, String message) {
+        if (roomId == null || senderId == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
 
@@ -283,6 +301,12 @@ public class ChatService {
 
         if (message.length() > 500) {
             throw new BusinessException(ErrorCode.CHAT_MESSAGE_TOO_LONG);
+        }
+    }
+
+    private void validateSendable(ChatRoom chatRoom) {
+        if (chatRoom.isClosed()) {
+            throw new BusinessException(ErrorCode.CHAT_ROOM_CLOSED);
         }
     }
 
