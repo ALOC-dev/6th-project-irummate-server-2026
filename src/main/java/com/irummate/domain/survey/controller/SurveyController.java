@@ -4,6 +4,7 @@ import com.irummate.domain.survey.dto.UserPreferencesRequestDto;
 import com.irummate.domain.survey.dto.UserPreferencesResponseDto;
 import com.irummate.domain.survey.service.SurveyService;
 import com.irummate.global.aop.RequiresSurvey;
+import com.irummate.global.aop.RequiresSurveyDate;
 import com.irummate.global.response.GlobalApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -34,6 +35,7 @@ public class SurveyController {
             @ApiResponse(responseCode = "409", description = "이미 설문을 제출한 상태입니다.")
     })
     @PostMapping
+    @RequiresSurveyDate
     public ResponseEntity<GlobalApiResponse<?>> saveUserPreferences(
             @AuthenticationPrincipal Long userId,
             @Valid @RequestBody UserPreferencesRequestDto requestDto){

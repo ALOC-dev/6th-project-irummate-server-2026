@@ -119,6 +119,20 @@ public class ValidationAspect {
 
     }
 
+    // 설문 날짜 검증
+    // @RequriesSurveyDate
+    @Before("@annotation(com.irummate.global.aop.RequiresSurveyDate)")
+    public void checkSurveyDate(){
+        MatchingConfig matchingConfig = matchingConfigRepository.findById(MatchingConfig.SINGLETON_ID)
+                .orElseThrow(()->new BusinessException(ErrorCode.MATCH_DATE_NOT_FOUND));
+
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+
+        if(today.isBefore(matchingConfig.getSurveyStartDate()) || today.isAfter(matchingConfig.getMatchEndDate())){
+            throw new BusinessException(ErrorCode.SURVEY_NOT_OPEN);
+        }
+    }
+
     // 매개변수로 들어오는 userId 확인
     public static Long extractUserId(){
 

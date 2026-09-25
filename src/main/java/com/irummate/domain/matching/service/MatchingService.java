@@ -19,7 +19,7 @@ import com.irummate.global.exception.ErrorCode;
 import com.irummate.global.util.HashIdsUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,9 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static com.irummate.domain.matching.util.MatchingDtoMapper.toCardStatus;
@@ -271,47 +269,36 @@ public class MatchingService {
         return matchingResponseDtos;
     }
 
-    private record Candidate(
-            MatchRequests existingMatchRequest,
-            Long newUserId,
-            double matchPercentage
-    ) {
-        static Candidate existing(MatchRequests matchRequest) {
-            return new Candidate(
-                    matchRequest,
-                    null,
-                    matchRequest.getMatchPercentage()
-            );
-        }
-
-        static Candidate fresh(UserPreferencesRepository.RecommendationCandidate candidate) {
-            return new Candidate(
-                    null,
-                    candidate.getUserId(),
-                    candidate.getMatchPercentage()
-            );
-        }
-
-        boolean isExisting() {
-            return existingMatchRequest != null;
-        }
-    }
 
     @Transactional
     public void match(Long userId){
 
         // 가장 먼저 본인 preferences 잠금
-        userPreferencesRepository.findByUserIdForUpdate(userId)
-                .orElseThrow(() ->
-                        new BusinessException(ErrorCode.USER_NOT_FOUND));
+        UserPreferences myPreference;
+        // 잠금 실패 시 대기 없이 바로 예외
+        // 연속 매칭 시도에 빠르게 대응
+        try {
+            myPreference =
+                    userPreferencesRepository.findByUserIdForUpdate(userId)
+                            .orElseThrow(() ->
+                                    new BusinessException(ErrorCode.USER_NOT_FOUND));
+        } catch (PessimisticLockingFailureException e) {
+            throw new BusinessException(
+                    ErrorCode.MATCH_IN_PROGRESS
+            );
+        }
 
-        Users me = usersRepository.findById(userId)
-                .orElseThrow(()->new BusinessException(ErrorCode.USER_NOT_FOUND));
 
-        if(me.getUserPreferences().getIsMatched()){
+        // User 데이터
+        Users me = myPreference.getUser();
+
+
+        // 이미 최종확정을 지은 상태인지 확인
+        if(myPreference.getIsMatched()){
             throw new BusinessException(ErrorCode.ALREADY_CONFIRMED);
         }
 
+        // 오늘 이미 매칭을 돌렸는지 확인
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
 
         LocalDateTime startOfToday = today.atStartOfDay();
@@ -327,164 +314,295 @@ public class MatchingService {
             throw new BusinessException(ErrorCode.MATCH_ALREADY_REROLLED_TODAY);
         }
 
-        UserPreferences myPreference = userPreferencesRepository.findByUserIdWithUserDetails(userId)
-                .orElseThrow(()->new BusinessException(ErrorCode.USER_NOT_FOUND));
-
-        String gender = myPreference.getUser().getUserDetails().getGender();
-        Integer smokingStatus = myPreference.getSmokingStatus();
-        float[] vec = myPreference.getLifestyleVector();
-        String vector = Arrays.toString(vec).replace(" ", "");
 
 
-        List<MatchRequests> reusableMatches =  matchRepository.findReusableCandidatesWithSmoking(
-                userId,
-                smokingStatus,
-                PageRequest.of(0,3)
-        );
+        // 사용자에게 추천되지 않은 Match 관계 조회
+        // 높은 매칭 점수의 사용자가 후보자가 되어있을 가능성이 높으므로
+        // 후보자들을 우선적으로 고려
+        // 너무 많은 후보자를 가져오지 않도록 최대 30명까지 고정
+        List<MatchRequests> candidates =
+                matchRepository.findAvailableCandidates(
+                        userId,
+                        PageRequest.of(0, 30)
+                );
 
-        List<UserPreferencesRepository.RecommendationCandidate> recommendationCandidates = userPreferencesRepository.findNewRecommendationCandidates(
+
+        // 만약 후보자가 10명보다 적으면 후보자를 추가(10명 추가)
+        // 흡연 조건이 걸린 후보자 탐색
+        if(candidates.size() < 10){
+
+            // L2 거리 후보자 탐색을 위한 기본 정보 세팅
+            String gender = me.getUserDetails().getGender();
+            Integer smokingStatus = myPreference.getSmokingStatus();
+            float[] vec = myPreference.getLifestyleVector();
+            String vector = Arrays.toString(vec).replace(" ", "");
+
+            // 후보자 탐색
+            // L2 점수까지 계산(보정 50 + L2 점수 40)
+            List<UserPreferencesRepository.RecommendationCandidate> recommendationCandidates = userPreferencesRepository.findNewRecommendationCandidates(
                 userId,
                 gender,
                 smokingStatus,
                 vector,
-                3
-        );
-
-        List<Candidate> candidates = new ArrayList<>();
-
-        for(MatchRequests matchRequests : reusableMatches){
-            candidates.add(Candidate.existing(matchRequests));
-        }
-
-        for(UserPreferencesRepository.RecommendationCandidate freshCandidate : recommendationCandidates){
-            candidates.add(Candidate.fresh(freshCandidate));
-        }
-
-        List<Candidate> selected = candidates.stream()
-                .sorted((a,b) -> Double.compare(b.matchPercentage(), a.matchPercentage()))
-                .limit(3)
-                .collect(Collectors.toCollection(ArrayList::new));
-
-        int needed = 3 - selected.size();
-
-        if(needed != 0){
-
-            List<Long> selectedUserIds = selected.stream()
-                    .map(candidate -> {
-                        if(candidate.isExisting()){
-                            MatchRequests matchRequests = candidate.existingMatchRequest();
-
-                            return matchRequests.getUserLow().getId().equals(userId)
-                                    ? matchRequests.getUserHigh().getId()
-                                    : matchRequests.getUserLow().getId();
-                        }
-
-                        return candidate.newUserId();
-
-                    })
-                    .toList();
-
-            List<MatchRequests> reusableMatchesIgnoreSmoking = matchRepository.findReusableCandidatesIgnoringSmoking(
-                    userId,
-                    PageRequest.of(0, selectedUserIds.size() + needed)
+                10
             );
 
 
-            List<Long> excludedUserIds = selectedUserIds.isEmpty()
-                    ? List.of(-1L)
-                    : selectedUserIds;
+            // 추가할 MatchRequest
+            // 점수까지 계산된 후보자들
+            // L2 거리로 가져온 후보자들의 점수에 가중치 부여 후 MatchRequest로 변환하는 createCandidates 함수 호출
+            List<MatchRequests> newMatchRequests =
+                    createCandidates(me, recommendationCandidates);
 
-            List<UserPreferencesRepository.RecommendationCandidate> recommendationCandidatesIgnoreSmoking = userPreferencesRepository.findNewRecommendationCandidatesIgnoringSmoking(
+
+            // 후보자가 추가되었으면 저장 및 후보자 재탐색 수행
+            if(!newMatchRequests.isEmpty()) {
+
+                // 추가된 후보자들을 저장
+                // 중복 예외 방지를 위한 코드
+                for (MatchRequests newMatchRequest : newMatchRequests) {
+                    matchRepository.insertCandidateIfAbsent(
+                            newMatchRequest.getUserLow().getId(),
+                            newMatchRequest.getUserHigh().getId(),
+                            newMatchRequest.getUserLowPreferences().getUserId(),
+                            newMatchRequest.getUserHighPreferences().getUserId(),
+                            newMatchRequest.getMatchPercentage()
+                    );
+                }
+
+
+                // 후보자들을 다시 정렬해 탐색
+                candidates =
+                        matchRepository.findAvailableCandidates(
+                                userId,
+                                PageRequest.of(0, 30)
+                        );
+            }
+
+        }
+
+        // 흡연 조건을 걸고 후보자 탐색을 진행했음에도 후보자가 10명이 넘지 않으면
+        // 흡연 조건을 완화시키고 후보자 탐색
+        if(candidates.size() < 10){
+            // L2 거리 후보자 탐색을 위한 기본 정보 세팅
+            String gender = me.getUserDetails().getGender();
+            float[] vec = myPreference.getLifestyleVector();
+            String vector = Arrays.toString(vec).replace(" ", "");
+
+            // 후보자 탐색
+            // L2 점수까지 계산(보정 50 + L2 점수 40)
+            List<UserPreferencesRepository.RecommendationCandidate> recommendationCandidates = userPreferencesRepository.findNewRecommendationCandidatesIgnoringSmoking(
                     userId,
                     gender,
-                    excludedUserIds,
                     vector,
-                    needed
+                    10
             );
 
-            List<Candidate> candidates2 = new ArrayList<>();
 
-            for (MatchRequests matchRequests : reusableMatchesIgnoreSmoking) {
-                Long candidateUserId = matchRequests.getUserLow().getId().equals(userId)
-                        ? matchRequests.getUserHigh().getId()
-                        : matchRequests.getUserLow().getId();
+            // 추가할 MatchRequest
+            // 점수까지 계산된 후보자들
+            // L2 거리로 가져온 후보자들의 점수에 가중치 부여 후 MatchRequest로 변환하는 createCandidates 함수 호출
+            List<MatchRequests> newMatchRequests =
+                    createCandidates(me, recommendationCandidates);
 
-                if (!selectedUserIds.contains(candidateUserId)) {
-                    candidates2.add(Candidate.existing(matchRequests));
+
+
+            // 후보자가 추가되었으면 저장 및 후보자 재탐색 수행
+            if(!newMatchRequests.isEmpty()) {
+
+                // 추가된 후보자들을 저장
+                // 중복 예외 방지를 위한 코드
+                for (MatchRequests newMatchRequest : newMatchRequests) {
+                    matchRepository.insertCandidateIfAbsent(
+                            newMatchRequest.getUserLow().getId(),
+                            newMatchRequest.getUserHigh().getId(),
+                            newMatchRequest.getUserLowPreferences().getUserId(),
+                            newMatchRequest.getUserHighPreferences().getUserId(),
+                            newMatchRequest.getMatchPercentage()
+                    );
                 }
+
+
+                // 후보자들을 다시 정렬해 탐색
+                candidates =
+                        matchRepository.findAvailableCandidates(
+                                userId,
+                                PageRequest.of(0, 30)
+                        );
             }
 
-            for(UserPreferencesRepository.RecommendationCandidate freshCandidate : recommendationCandidatesIgnoreSmoking){
-                candidates2.add(Candidate.fresh(freshCandidate));
-            }
-
-            selected.addAll(
-                    candidates2.stream()
-                            .sorted((a, b) -> Double.compare(b.matchPercentage(), a.matchPercentage()))
-                            .limit(needed)
-                            .toList()
-            );
         }
 
-
-        if(selected.isEmpty()){
+        // 추천해줄 후보자가 1명도 없으면 예외 발생
+        // 한명이라도 존재하면 추천
+        if(candidates.size() <= 0) {
             throw new BusinessException(ErrorCode.MATCH_CANDIDATE_NOT_FOUND);
         }
 
 
-        for (Candidate candidate : selected) {
-            if (candidate.isExisting()) {
-                candidate.existingMatchRequest()
-                        .updateStatusOf(userId, MatchStatus.RECOMMENDED);
-            } else {
-                MatchRequests newMatchRequest = createMatchRequest(
-                        userId,
-                        candidate.newUserId(),
-                        candidate.matchPercentage()
-                );
+        // 후보자들 중 최상위 후보자 3명을 추천
+        // 후보자 리스트들 중 다양한 상황(동시 요청, 추천 update 실패 등)을 고려하여
+        // 3명을 확보할 때까지 반복(변수 상황으로 인해 최상위 후보자 3명이 아닐 수도 있음)
+        int recommendedCount = 0;
 
-                try {
-                    matchRepository.saveAndFlush(newMatchRequest);
-                } catch (DataIntegrityViolationException e) {
-                    throw new BusinessException(
-                            ErrorCode.MATCH_ALREADY_REROLLED_TODAY,
-                            "매칭이 겹쳤어요. 다시 시도해 주세요."
-                    );
-                }
+        for (MatchRequests candidate : candidates) {
+            if (recommendedCount >= 3) {
+                break;
             }
+
+            int updatedCount =
+                    recommendCandidateIfAvailable(candidate, userId);
+
+            // 후보자 업데이트를 실패하면,
+            // 추천 후보자 수를 늘리지 않고 continue
+            if (updatedCount == 0) {
+                // 다른 요청으로 상태가 변경된 후보
+                continue;
+            }
+
+            recommendedCount++;
         }
 
+
+        // 추천할 후보가 하나도 없으면 예외 발생
+        // 후보자가 있었어도 동시 요청 등의 문제로 인해
+        // 후보자 상태를 업데이트 하지 못했을 때 발생
+        if (recommendedCount == 0) {
+            throw new BusinessException(
+                    ErrorCode.MATCH_CANDIDATE_NOT_FOUND
+            );
+        }
+
+
+        // 오늘 매칭을 돌렸음을 update
         myPreference.updateIsRerolled();
 
     }
 
-
-    private MatchRequests createMatchRequest(
-            Long myUserId,
-            Long otherUserId,
-            Double matchPercentage
+    // L2로 뽑아온 후보자들을 MatchRequest에 저장시키기 위한 함수
+    // 가중치(나 5점, 상대방 5점)를 부여하며 계산하여 None-None 관계로 저장
+    private List<MatchRequests> createCandidates(
+            Users me,
+            List<UserPreferencesRepository.RecommendationCandidate> recommendationCandidates
     ){
-        Users me = usersRepository.findById(myUserId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-        Users other = usersRepository.findById(otherUserId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
-        Users higher = (myUserId >= otherUserId)? me:other;
-        Users lower = (myUserId >= otherUserId)? other:me;
+        // 먼저 후보자 리스트가 비어있는지 확인
+        if(recommendationCandidates.isEmpty()){
+            return List.of();
+        }
 
-        MatchRequests newMatchRequest = MatchRequests.builder()
-                .userHigh(higher)
-                .userLow(lower)
-                .userHighPreferences(higher.getUserPreferences())
-                .userLowPreferences(lower.getUserPreferences())
-                .matchPercentage(matchPercentage)
-                .userHighStatus(MatchStatus.NONE)
-                .userLowStatus(MatchStatus.NONE)
-                .build();
 
-        newMatchRequest.updateStatusOf(myUserId, MatchStatus.RECOMMENDED);
+        // 후보자들의 userId를 필터링
+        List<Long> candidateUserIds = recommendationCandidates.stream()
+                .map(UserPreferencesRepository.RecommendationCandidate :: getUserId)
+                .toList();
 
-        return newMatchRequest;
+
+        // 상대방 Users와 UserPreferences를 모두 fetch
+        Map<Long, Users> usersById = usersRepository.findAllByIdsWithPreferences(candidateUserIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        Users::getId,
+                        user->user
+                ));
+
+        // 반환용 빈 List 생성
+        List<MatchRequests> newMatchRequests = new ArrayList<>();
+
+        for(UserPreferencesRepository.RecommendationCandidate recommendationCandidate : recommendationCandidates){
+
+            // 후보자를 한명씩 꺼냄
+            Users other = usersById.get(recommendationCandidate.getUserId());
+
+            if(other == null){
+                continue;
+            }
+
+            // 가중치 부여를 위한 매칭 점수 변수
+            Double matchPercentage = recommendationCandidate.getMatchPercentage();
+
+
+            // 흡연 조건 완화 시
+            // 흡연 여부가 일치하지 않는지 확인
+            boolean smokingMismatch = !Objects.equals(
+                    me.getUserPreferences().getSmokingStatus(),
+                    other.getUserPreferences().getSmokingStatus()
+            );
+
+            // 흡연 여부가 일치하지 않으면
+            // 2점 감점
+            if(smokingMismatch){
+                 matchPercentage -= 2.0;
+            }
+
+            // MatchRequest 저장을 위한 ID 대소 구분
+            Users higher = (me.getId() >= other.getId())? me:other;
+            Users lower = (me.getId() >= other.getId())? other:me;
+
+
+            // lower가 중요하게 생각하는 항목 일치 여부 확인
+            long lowUserImportantFieldMatchCount = lower.getUserPreferences().getVisibleProfileFields().stream()
+                    .distinct()
+                    .limit(3)
+                    .filter(field -> {
+                        Integer lowerValue =
+                                field.getValueFrom(lower.getUserPreferences().getAnswers());
+
+                        Integer higherValue =
+                                field.getValueFrom(higher.getUserPreferences().getAnswers());
+
+                        return Objects.equals(lowerValue, higherValue);
+                    })
+                    .count();
+
+
+            // 항목 일치 개수에 따른 가중치 부여
+            switch ((int) lowUserImportantFieldMatchCount){
+                case 1: matchPercentage += 1.5; break;
+                case 2: matchPercentage += 3.0; break;
+                case 3: matchPercentage += 5.0; break;
+                default: break;
+            }
+
+
+            // higher가 중요하게 생각하는 항목 일치 여부 확인
+            long highUserImportantFieldMatchCount = higher.getUserPreferences().getVisibleProfileFields().stream()
+                    .distinct()
+                    .limit(3)
+                    .filter(field -> {
+                        Integer lowerValue =
+                                field.getValueFrom(lower.getUserPreferences().getAnswers());
+
+                        Integer higherValue =
+                                field.getValueFrom(higher.getUserPreferences().getAnswers());
+
+                        return Objects.equals(lowerValue, higherValue);
+                    })
+                    .count();
+
+            // 항목 일치 개수에 따른 가중치 부여
+            switch ((int) highUserImportantFieldMatchCount){
+                case 1: matchPercentage += 1.5; break;
+                case 2: matchPercentage += 3.0; break;
+                case 3: matchPercentage += 5.0; break;
+                default: break;
+            }
+
+
+            newMatchRequests.add(MatchRequests.builder()
+                    .userHigh(higher)
+                    .userLow(lower)
+                    .userHighPreferences(higher.getUserPreferences())
+                    .userLowPreferences(lower.getUserPreferences())
+                    .matchPercentage(matchPercentage)
+                    .userHighStatus(MatchStatus.NONE)
+                    .userLowStatus(MatchStatus.NONE)
+                    .build()
+            );
+
+        }
+
+        return newMatchRequests;
     }
 
 
@@ -509,6 +627,23 @@ public class MatchingService {
         for(MatchRequests matchRequest : myOtherMatchRequests){
             matchRequest.updateStatusOf(userId, MatchStatus.CLOSED);
         }
+    }
+
+
+    // 추천을 위한 update 쿼리
+    // 성공 실패 여부를 반환
+    private int recommendCandidateIfAvailable(
+            MatchRequests candidate,
+            Long userId
+    ) {
+        LocalDateTime recommendedAt =
+                LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+
+        return matchRepository.recommendCandidateIfAvailable(
+                candidate.getId(),
+                userId,
+                recommendedAt
+        );
     }
 
 

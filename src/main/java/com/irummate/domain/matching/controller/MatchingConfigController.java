@@ -37,7 +37,7 @@ public class MatchingConfigController {
     public ResponseEntity<GlobalApiResponse<MatchingConfigDto>> getMatchDate(@AuthenticationPrincipal Long userId){
 
         return ResponseEntity.ok(GlobalApiResponse.success(HttpStatus.OK,
-                "매칭 날짜 조회 성공",
+                "설문/매칭 날짜 조회 성공",
                 matchingConfigService.getMatchDate()));
     }
 
@@ -51,11 +51,12 @@ public class MatchingConfigController {
     @PatchMapping("/match/config")
     public ResponseEntity<GlobalApiResponse<?>> setMatchDate(@AuthenticationPrincipal Long userId,
             @Valid @RequestBody MatchingConfigDto matchingConfigDto){
-        matchingConfigService.setMatchDate(matchingConfigDto.getMatchStartDate(),
+        matchingConfigService.setMatchDate(matchingConfigDto.getSurveyStartDate(),
+                matchingConfigDto.getMatchStartDate(),
                 matchingConfigDto.getMatchEndDate());
 
         return ResponseEntity.ok(GlobalApiResponse.success(HttpStatus.OK,
-                "매칭 날짜 설정 성공",
+                "설문/매칭 날짜 설정 성공",
                 null));
     }
 }

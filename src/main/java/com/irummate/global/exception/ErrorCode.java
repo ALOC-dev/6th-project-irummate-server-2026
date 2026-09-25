@@ -35,6 +35,7 @@ public enum ErrorCode {
     NOT_MATCH_PARTICIPANT(HttpStatus.FORBIDDEN, "해당 매칭의 당사자가 아닙니다."),
     CHAT_ROOM_CLOSED(HttpStatus.FORBIDDEN, "상대방이 나가서 대화를 보낼 수 없는 채팅방입니다."),
     MATCH_NOT_OPEN(HttpStatus.FORBIDDEN, "오늘은 매칭 가능 날짜가 아닙니다."),
+    SURVEY_NOT_OPEN(HttpStatus.FORBIDDEN, "오늘은 설문 가능 날짜가 아닙니다."),
     ADMIN_CERTIFICATION_NOT_ALLOWED(HttpStatus.FORBIDDEN, "관리자 계정은 인증 요청을 생성할 수 없습니다."),
     USER_DETAILS_REQUIRED(HttpStatus.FORBIDDEN, "필수 정보 입력 후 인증 요청을 할 수 있습니다."),
 
@@ -58,6 +59,7 @@ public enum ErrorCode {
     NOT_REJECTABLE_STATUS(HttpStatus.CONFLICT, "거절할 수 없는 상태입니다."),
     NOT_HEARTABLE_STATUS(HttpStatus.CONFLICT, "하트를 전달할 수 없는 상태입니다."),
     NOT_CONFIRMABLE_STATUS(HttpStatus.CONFLICT, "매칭을 확정할 수 없는 상태입니다."),
+    MATCH_IN_PROGRESS(HttpStatus.CONFLICT, "매칭 추천을 처리 중입니다."),
 
     // ── 422 ──
     NOT_ACCEPTED_STATUS(HttpStatus.UNPROCESSABLE_ENTITY, "ACCEPTED 상태에서만 확정할 수 있습니다."),
