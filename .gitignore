@@ -38,6 +38,7 @@ out/
 
 ### .env ###
 .env
+.env.test
 
 ### Local test pages ###
 websocket-chat-test.html
