@@ -70,6 +70,10 @@ public class SecurityConfig {
                                 "/api/auth/kakao/**", // 카카오 로그인 관련 주소들
                                 "/api/auth/refresh",   // 토큰 만료 시 재발급받는 주소
                                 "/ws/chat/**",
+                                // 테스트 서버 Swagger
+                                "/swagger-ui.html",
+                                "/swagger-ui/**",
+                                "/v3/api-docs/**",
                                 "/error"                 // 에러 발생 시 리다이렉트되는 경로
                         ).permitAll()
 
