@@ -3,7 +3,6 @@ package com.irummate.domain.auth.controller;
 import com.irummate.domain.auth.dto.AuthStatusResponseDto;
 import com.irummate.domain.auth.dto.RefreshTokenResponseDto;
 import com.irummate.domain.auth.service.AuthService;
-import com.irummate.global.config.KakaoProperties;
 import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
 import com.irummate.global.response.GlobalApiResponse;
@@ -17,12 +16,8 @@ import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.util.UriComponentsBuilder;
 
-import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
 import java.time.Duration;
-import java.util.Base64;
 import java.util.Set;
 
 @RestController
@@ -37,39 +32,7 @@ public class AuthController {
     );
 
     private final AuthService authService;
-    private final KakaoProperties kakaoProperties;
     private final JwtProperties jwtProperties;
-    private final SecureRandom secureRandom = new SecureRandom();
-
-    @GetMapping("/kakao/start")
-    public ResponseEntity<Void> kakaoStart(HttpServletResponse response) {
-        byte[] bytes = new byte[32];
-        secureRandom.nextBytes(bytes);
-        String state = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-
-        ResponseCookie stateCookie = ResponseCookie.from("oauthState", state)
-                .httpOnly(true)
-                .secure(true)
-                .sameSite("Lax")
-                .path("/api/auth/kakao")
-                .maxAge(Duration.ofMinutes(5))
-                .build();
-        response.addHeader(HttpHeaders.SET_COOKIE, stateCookie.toString());
-
-        String authorizationUrl = UriComponentsBuilder
-                .fromUriString("https://kauth.kakao.com/oauth/authorize")
-                .queryParam("response_type", "code")
-                .queryParam("client_id", kakaoProperties.getClientId())
-                .queryParam("redirect_uri", kakaoProperties.getRedirectUri())
-                .queryParam("state", state)
-                .encode(StandardCharsets.UTF_8)
-                .build()
-                .toUriString();
-
-        return ResponseEntity.status(HttpStatus.FOUND)
-                .header(HttpHeaders.LOCATION, authorizationUrl)
-                .build();
-    }
 
     /**
      * [GET] /api/auth/kakao/callback
@@ -79,19 +42,12 @@ public class AuthController {
     @GetMapping("/kakao/callback")
     public ResponseEntity<GlobalApiResponse<?>> kakaoCallback(
             @RequestParam(value = "code", required = false) String code, // 카카오가 보내준 인가 코드
-            @RequestParam(value = "state", required = false) String state,
-            HttpServletRequest servletRequest,
             HttpServletResponse servletResponse
     ) {
         // 만약 카카오가 코드를 안 보냈거나 비어있다면 잘못된 요청시 에러를 반환합니다.
         if (code == null || code.isBlank()) {
             throw new BusinessException(ErrorCode.BAD_REQUEST,"인가 코드가 필요합니다.");
         }
-        String expectedState = extractCookie(servletRequest, "oauthState");
-        if (state == null || expectedState == null || !expectedState.equals(state)) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "유효하지 않은 로그인 요청입니다.");
-        }
-
         // 1. [비즈니스 로직 호출]: 서비스에게 일회용 코드를 주면서 카카오와 통신하여 회원가입/로그인을 시키고
         //    그 결과물(Access/Refresh Token 및 유저정보)을 받아옵니다.
         AuthService.LoginResult loginResult = authService.loginOrRegister(code);
@@ -102,7 +58,6 @@ public class AuthController {
 
         // 3. [헤더 설정]: 만든 HttpOnly 쿠키를 브라우저의 지갑에 쏙 넣어주도록 응답 헤더(Set-Cookie)에 추가합니다.
         servletResponse.addHeader("Set-Cookie", refreshTokenCookie.toString());
-        servletResponse.addHeader("Set-Cookie", clearCookie("oauthState", "/api/auth/kakao").toString());
 
         // 4. [최종 반환]: 프론트엔드에게 Access Token과 유저 간략 정보가 담긴 데이터를 규격 상자에 담아 반환합니다.
         return ResponseEntity.ok(GlobalApiResponse.success(HttpStatus.OK, "Access Token 반환 성공", loginResult.response()));
@@ -179,16 +134,6 @@ public class AuthController {
                 .secure(true)
                 .path("/")
                 .maxAge(Duration.ofMillis(jwtProperties.getRefreshTokenExpiration()))
-                .sameSite("Lax")
-                .build();
-    }
-
-    private ResponseCookie clearCookie(String name, String path) {
-        return ResponseCookie.from(name, "")
-                .httpOnly(true)
-                .secure(true)
-                .path(path)
-                .maxAge(Duration.ZERO)
                 .sameSite("Lax")
                 .build();
     }
