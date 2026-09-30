@@ -5,6 +5,8 @@ import com.irummate.domain.admin.dto.AdminCertificationResponseDto;
 import com.irummate.domain.certification.entity.Certification;
 import com.irummate.domain.certification.entity.CertificationStatus;
 import com.irummate.domain.certification.repository.CertificationRepository;
+import com.irummate.domain.user.entity.Users;
+import com.irummate.domain.user.repository.UsersRepository;
 import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
 import com.irummate.global.s3.S3Utils;
@@ -16,6 +18,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -25,6 +29,7 @@ public class AdminCertificationService {
     private final CertificationRepository certificationRepository;
     private final HashIdsUtils hashIdsUtils;
     private final S3Utils s3Utils;
+    private final UsersRepository usersRepository;
 
     public List<AdminCertificationResponseDto> getCertifications(CertificationStatus status, int page) {
         Page<Certification> certifications = (status == null)
@@ -46,12 +51,12 @@ public class AdminCertificationService {
     }
 
     @Transactional
-    public AdminCertificationResponseDto approveCertification(String certificationId) {
+    public AdminCertificationResponseDto approveCertification(Long adminUserId, String certificationId) {
         Certification certification = getCertificationEntity(certificationId);
         ensurePending(certification);
+        Users admin = getAdmin(adminUserId);
 
-        certification.approve(null);
-        certification.getUser().activate();
+        certification.approve(admin, null, currentSemesterExpiresAt());
 
         return AdminCertificationResponseDto.from(certification,
                 certificationId,
@@ -60,11 +65,12 @@ public class AdminCertificationService {
     }
 
     @Transactional
-    public AdminCertificationResponseDto rejectCertification(String certificationId, AdminCertificationRejectRequestDto requestDto) {
+    public AdminCertificationResponseDto rejectCertification(Long adminUserId, String certificationId, AdminCertificationRejectRequestDto requestDto) {
         Certification certification = getCertificationEntity(certificationId);
         ensurePending(certification);
+        Users admin = getAdmin(adminUserId);
 
-        certification.reject(requestDto.getAdminComment());
+        certification.reject(admin, requestDto.getAdminComment());
 
         return AdminCertificationResponseDto.from(certification,
                 certificationId,hashIdsUtils.encode(certification.getUser().getId()),
@@ -84,9 +90,22 @@ public class AdminCertificationService {
     }
 
     private void ensurePending(Certification certification) {
-        if (certification.getCertificationStatus() != CertificationStatus.REQUESTED) {
+        if (certification.getCertificationStatus() != CertificationStatus.PENDING) {
             throw new BusinessException(ErrorCode.CERTIFICATION_ALREADY_PROCESSED);
         }
+    }
+
+    private Users getAdmin(Long adminUserId) {
+        return usersRepository.findById(adminUserId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+    }
+
+    private LocalDateTime currentSemesterExpiresAt() {
+        LocalDate today = LocalDate.now();
+        LocalDate end = today.getMonthValue() <= 6
+                ? LocalDate.of(today.getYear(), 6, 30)
+                : LocalDate.of(today.getYear(), 12, 31);
+        return end.atTime(23, 59, 59);
     }
 
     private AdminCertificationResponseDto toAdminCertificationResponseDto(Certification certification) {

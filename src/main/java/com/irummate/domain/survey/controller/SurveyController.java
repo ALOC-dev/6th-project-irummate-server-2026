@@ -3,6 +3,7 @@ package com.irummate.domain.survey.controller;
 import com.irummate.domain.survey.dto.UserPreferencesRequestDto;
 import com.irummate.domain.survey.dto.UserPreferencesResponseDto;
 import com.irummate.domain.survey.service.SurveyService;
+import com.irummate.global.aop.RequiresDetails;
 import com.irummate.global.aop.RequiresSurvey;
 import com.irummate.global.response.GlobalApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -33,6 +34,7 @@ public class SurveyController {
             @ApiResponse(responseCode = "404", description = "유저를 찾을 수 없습니다."),
             @ApiResponse(responseCode = "409", description = "이미 설문을 제출한 상태입니다.")
     })
+    @RequiresDetails
     @PostMapping
     public ResponseEntity<GlobalApiResponse<?>> saveUserPreferences(
             @AuthenticationPrincipal Long userId,
@@ -56,6 +58,7 @@ public class SurveyController {
             @ApiResponse(responseCode = "404", description = "설문 내역을 찾을 수 없습니다.")
     })
     @GetMapping("/me")
+    @RequiresDetails
     @RequiresSurvey
     public ResponseEntity<GlobalApiResponse<?>> getUserPreferences(
             @AuthenticationPrincipal Long userId
@@ -76,6 +79,7 @@ public class SurveyController {
             @ApiResponse(responseCode = "409", description = "이미 매칭이 확정된 상태입니다.")
     })
     @PatchMapping("/me")
+    @RequiresDetails
     @RequiresSurvey
     public ResponseEntity<GlobalApiResponse<?>> updateUserPreferences(
             @AuthenticationPrincipal Long userId,

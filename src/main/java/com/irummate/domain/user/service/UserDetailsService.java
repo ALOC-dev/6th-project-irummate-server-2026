@@ -7,25 +7,39 @@ import com.irummate.domain.user.dto.UserProfileResponseDto;
 import com.irummate.domain.user.dto.UserProfileUpdateRequestDto;
 import com.irummate.domain.user.dto.UserProfileUpdateResponseDto;
 import com.irummate.domain.user.entity.UserDetails;
-import com.irummate.domain.user.entity.UserRole;
 import com.irummate.domain.user.entity.UserStatus;
 import com.irummate.domain.user.entity.Users;
 import com.irummate.domain.user.repository.UserDetailsRepository;
 import com.irummate.domain.user.repository.UsersRepository;
-import com.irummate.domain.matching.service.MatchingService;
 import com.irummate.global.config.KakaoProperties;
 import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
+import com.irummate.domain.auth.repository.LoginSessionRepository;
+import com.irummate.domain.certification.entity.Certification;
+import com.irummate.domain.certification.entity.CertificationStatus;
+import com.irummate.domain.certification.repository.CertificationRepository;
+import com.irummate.domain.survey.repository.UserPreferencesRepository;
+import com.irummate.domain.matching.repository.MatchRepository;
+import com.irummate.domain.chat.repository.ChatRoomRepository;
+import com.irummate.global.s3.S3Utils;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
+
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.List;
+import java.util.Objects;
 
 /**
  * @Service: 스프링에게 이 클래스가 비즈니스 로직을 담당하는 '서비스' 컴포넌트임을 알립니다.
@@ -36,13 +50,19 @@ import org.springframework.web.client.RestTemplate;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
+@Slf4j
 public class UserDetailsService {
 
 
     private final UsersRepository usersRepository;
     private final UserDetailsRepository userDetailsRepository;
+    private final LoginSessionRepository loginSessionRepository;
+    private final CertificationRepository certificationRepository;
+    private final UserPreferencesRepository userPreferencesRepository;
+    private final MatchRepository matchRepository;
+    private final ChatRoomRepository chatRoomRepository;
+    private final S3Utils s3Utils;
     private final KakaoProperties kakaoProperties;
-    private final MatchingService matchingService;
     private final RestTemplate restTemplate = new RestTemplate();
 
     /**
@@ -75,10 +95,6 @@ public class UserDetailsService {
 
         // [DB 저장] 조립된 객체를 데이터베이스에 저장(Insert)합니다.
         UserDetails savedDetails = userDetailsRepository.save(userDetails);
-        if(user.getRole() == UserRole.GUEST){
-            user.promoteToUser();
-        }
-
         return toResponse(savedDetails);
     }
 
@@ -91,6 +107,17 @@ public class UserDetailsService {
 
         UserDetails userDetails = userDetailsRepository.findById(userPk)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        boolean identityChanged = valueChanged(userDetails.getRealName(), request.getRealName())
+                || valueChanged(userDetails.getStudentId(), request.getStudentId())
+                || valueChanged(userDetails.getDepartment(), request.getDepartment());
+
+        if (identityChanged) {
+            certificationRepository.findTopByUser_IdOrderByCreatedAtDesc(userPk)
+                    .filter(certification -> certification.getCertificationStatus() == CertificationStatus.PENDING
+                            || certification.getCertificationStatus() == CertificationStatus.APPROVED)
+                    .ifPresent(Certification::expire);
+        }
 
         userDetails.update(
                 request.getRealName(),
@@ -158,11 +185,54 @@ public class UserDetailsService {
             throw new BusinessException(ErrorCode.FORBIDDEN, "이미 탈퇴한 계정입니다.");
         }
 
-        unlinkKakaoUser(user.getOauthId());
-        user.withdraw();
+        String oauthId = user.getOauthId();
+        List<String> imageKeys = certificationRepository.findAllByUser_IdOrderByCreatedAtDesc(userPk)
+                .stream()
+                .map(Certification::getImageKey)
+                .filter(Objects::nonNull)
+                .toList();
 
-        // 탈퇴한 계정과 연관된 모든 match request를 CLOSED 처리합니다.
-        matchingService.closeAllMatchRequestsByUserId(userPk);
+        user.withdraw();
+        loginSessionRepository.revokeAllByUserId(userPk, LocalDateTime.now(ZoneId.of("Asia/Seoul")));
+
+        matchRepository.findAllByUserLow_IdOrUserHigh_Id(userPk, userPk)
+                .forEach(match -> match.closeForWithdrawal(userPk));
+        chatRoomRepository.findAllByParticipantId(userPk).forEach(room -> room.close());
+        matchRepository.flush();
+
+        if (userPreferencesRepository.existsById(userPk)) {
+            userPreferencesRepository.deleteById(userPk);
+        }
+        if (userDetailsRepository.existsById(userPk)) {
+            userDetailsRepository.deleteById(userPk);
+        }
+        certificationRepository.deleteAllByUser_Id(userPk);
+
+        runExternalCleanupAfterCommit(oauthId, imageKeys);
+    }
+
+    private boolean valueChanged(String current, String requested) {
+        return requested != null && !Objects.equals(current, requested);
+    }
+
+    private void runExternalCleanupAfterCommit(String oauthId, List<String> imageKeys) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                imageKeys.forEach(key -> {
+                    try {
+                        s3Utils.delete(key);
+                    } catch (Exception e) {
+                        log.warn("Failed to delete certification image after withdrawal. key={}", key, e);
+                    }
+                });
+                try {
+                    unlinkKakaoUser(oauthId);
+                } catch (Exception e) {
+                    log.warn("Failed to unlink Kakao account after withdrawal.", e);
+                }
+            }
+        });
     }
 
 

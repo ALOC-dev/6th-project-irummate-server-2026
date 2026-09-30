@@ -16,6 +16,8 @@ import com.irummate.domain.matching.entity.MatchRequests;
 @Repository
 public interface MatchRepository extends JpaRepository<MatchRequests, Long> {
 
+    List<MatchRequests> findAllByUserLow_IdOrUserHigh_Id(Long userLowId, Long userHighId);
+
     @Query(value = """
             SELECT COALESCE(SUM(CASE WHEN mr.user_low_status = 'HEART' THEN 1 ELSE 0 END), 0)
                  + COALESCE(SUM(CASE WHEN mr.user_high_status = 'HEART' THEN 1 ELSE 0 END), 0)

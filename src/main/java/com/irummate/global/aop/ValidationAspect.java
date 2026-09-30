@@ -7,6 +7,10 @@ import com.irummate.domain.survey.repository.UserPreferencesRepository;
 import com.irummate.domain.user.entity.UserStatus;
 import com.irummate.domain.user.entity.Users;
 import com.irummate.domain.user.repository.UsersRepository;
+import com.irummate.domain.user.repository.UserDetailsRepository;
+import com.irummate.domain.certification.entity.CertificationStatus;
+import com.irummate.domain.certification.repository.CertificationRepository;
+import com.irummate.global.util.SemesterUtils;
 import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
 import lombok.extern.slf4j.Slf4j;
@@ -30,14 +34,29 @@ public class ValidationAspect {
     private final UserPreferencesRepository userPreferencesRepository;
     private final UsersRepository usersRepository;
     private final MatchingConfigRepository matchingConfigRepository;
+    private final CertificationRepository certificationRepository;
+    private final UserDetailsRepository userDetailsRepository;
 
     @Autowired
     public ValidationAspect(UserPreferencesRepository userPreferencesRepository,
                             UsersRepository usersRepository,
-                            MatchingConfigRepository matchingConfigRepository){
+                             MatchingConfigRepository matchingConfigRepository,
+                             CertificationRepository certificationRepository,
+                             UserDetailsRepository userDetailsRepository){
         this.userPreferencesRepository = userPreferencesRepository;
         this.usersRepository = usersRepository;
         this.matchingConfigRepository = matchingConfigRepository;
+        this.certificationRepository = certificationRepository;
+        this.userDetailsRepository = userDetailsRepository;
+    }
+
+    @Before("@annotation(com.irummate.global.aop.RequiresDetails)")
+    public void checkDetailsCompleted(){
+        Long userId = extractUserId();
+
+        if (!userDetailsRepository.existsById(userId)) {
+            throw new BusinessException(ErrorCode.USER_DETAILS_REQUIRED);
+        }
     }
 
     // survey가 완료된 상태인지 검증
@@ -63,11 +82,15 @@ public class ValidationAspect {
     public void checkCertification(){
         Long userId = extractUserId();
 
-        Users user = usersRepository.findById(userId)
-                .orElseThrow(()->new BusinessException(ErrorCode.USER_NOT_FOUND));
+        boolean approved = certificationRepository
+                .findByUser_IdAndSemester(userId, SemesterUtils.currentSemester())
+                .filter(certification -> certification.getCertificationStatus() == CertificationStatus.APPROVED)
+                .filter(certification -> certification.getExpiresAt() == null
+                        || certification.getExpiresAt().isAfter(java.time.LocalDateTime.now()))
+                .isPresent();
 
-        if(user.getStatus() != UserStatus.ACTIVE){
-            throw new BusinessException(ErrorCode.FORBIDDEN);
+        if (!approved) {
+            throw new BusinessException(ErrorCode.CERTIFICATION_REQUIRED);
         }
     }
 

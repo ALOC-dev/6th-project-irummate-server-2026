@@ -47,22 +47,24 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             try {
                 Claims claims = jwtTokenProvider.parseClaims(token);
                 Long userId = hashIdsUtils.decode(claims.getSubject());
-                String role = claims.get("role", String.class);
+                String sessionId = claims.get("sid", String.class);
+                boolean withdrawalRequest = "DELETE".equalsIgnoreCase(request.getMethod())
+                        && "/api/users/me".equals(request.getRequestURI());
 
-                boolean blocked = usersRepository.findById(userId)
-                        .map(user -> user.getStatus() == UserStatus.BANNED || user.getStatus() == UserStatus.WITHDRAWN)
-                        .orElse(true);
-
-                if (!blocked) {
+                usersRepository.findById(userId)
+                        .filter(user -> user.getStatus() != UserStatus.WITHDRAWN)
+                        .filter(user -> user.getStatus() != UserStatus.BANNED || withdrawalRequest)
+                        .filter(user -> sessionId != null && !sessionId.isBlank())
+                        .ifPresent(user -> {
                     UsernamePasswordAuthenticationToken authentication =
                             new UsernamePasswordAuthenticationToken(
                                     userId,
                                     null,
-                                    List.of(new SimpleGrantedAuthority("ROLE_" + role))
+                                    List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()))
                             );
 
                     SecurityContextHolder.getContext().setAuthentication(authentication);
-                }
+                });
             } catch (RuntimeException e) {
                 SecurityContextHolder.clearContext();
                 response.sendError(HttpServletResponse.SC_UNAUTHORIZED);

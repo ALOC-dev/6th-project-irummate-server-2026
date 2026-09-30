@@ -20,6 +20,8 @@ public class AdminCertificationResponseDto {
     private String status;
     private String adminComment;
     private LocalDateTime createdAt;
+    private LocalDateTime reviewedAt;
+    private LocalDateTime expiresAt;
 
     public static AdminCertificationResponseDto from(Certification certification,
                                                      String certificationId,
@@ -36,7 +38,9 @@ public class AdminCertificationResponseDto {
                 imageURL,
                 certification.getCertificationStatus().name(),
                 certification.getAdminComment(),
-                certification.getCreatedAt()
+                certification.getCreatedAt(),
+                certification.getReviewedAt(),
+                certification.getExpiresAt()
         );
     }
 }

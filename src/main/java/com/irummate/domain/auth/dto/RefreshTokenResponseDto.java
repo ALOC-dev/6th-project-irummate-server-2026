@@ -8,4 +8,6 @@ import lombok.Getter;
 public class RefreshTokenResponseDto {
 
     private final String accessToken;
+    private final String tokenType;
+    private final Long accessTokenExpiresIn;
 }

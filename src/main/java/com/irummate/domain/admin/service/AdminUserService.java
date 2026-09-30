@@ -3,10 +3,15 @@ package com.irummate.domain.admin.service;
 import com.irummate.domain.admin.dto.AdminUserDetailResponseDto;
 import com.irummate.domain.admin.dto.AdminUserResponseDto;
 import com.irummate.domain.admin.dto.AdminUsersResponseDto;
+import com.irummate.domain.admin.dto.AdminUserBanRequestDto;
+import com.irummate.domain.admin.entity.UserBan;
+import com.irummate.domain.admin.repository.UserBanRepository;
+import com.irummate.domain.auth.repository.LoginSessionRepository;
 import com.irummate.domain.certification.entity.Certification;
 import com.irummate.domain.certification.repository.CertificationRepository;
 import com.irummate.domain.matching.service.MatchingService;
 import com.irummate.domain.user.entity.Users;
+import com.irummate.domain.user.entity.UserStatus;
 import com.irummate.domain.user.repository.UsersRepository;
 import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
@@ -19,6 +24,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 @Service
 @RequiredArgsConstructor
@@ -30,6 +37,8 @@ public class AdminUserService {
     private final CertificationRepository certificationRepository;
     private final HashIdsUtils hashIdsUtils;
     private final MatchingService matchingService;
+    private final LoginSessionRepository loginSessionRepository;
+    private final UserBanRepository userBanRepository;
 
     @Transactional(readOnly = true)
     public AdminUsersResponseDto getUsers(int page, int size) {
@@ -69,10 +78,19 @@ public class AdminUserService {
     }
 
     @Transactional
-    public AdminUserResponseDto banUser(String userId) {
+    public AdminUserResponseDto banUser(Long adminUserId, String userId, AdminUserBanRequestDto request) {
         Users user = getUser(decodeUserId(userId));
+        Users admin = getUser(adminUserId);
+        if (user.getId().equals(adminUserId)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "관리자는 자기 자신을 정지할 수 없습니다.");
+        }
+        if (user.getStatus() == UserStatus.WITHDRAWN) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "탈퇴한 계정은 정지할 수 없습니다.");
+        }
 
         user.ban();
+        userBanRepository.save(new UserBan(user, admin, request.getReason(), request.getExpiresAt()));
+        loginSessionRepository.revokeAllByUserId(user.getId(), LocalDateTime.now(ZoneId.of("Asia/Seoul")));
 
         // 정지된 계정과 연관된 모든 match request를 CLOSED 처리합니다. (탈퇴 처리와 대칭)
         matchingService.closeAllMatchRequestsByUserId(user.getId());
@@ -81,10 +99,16 @@ public class AdminUserService {
     }
 
     @Transactional
-    public AdminUserResponseDto unbanUser(String userId) {
+    public AdminUserResponseDto unbanUser(Long adminUserId, String userId) {
         Users user = getUser(decodeUserId(userId));
+        Users admin = getUser(adminUserId);
+        if (user.getStatus() != UserStatus.BANNED) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "정지된 계정이 아닙니다.");
+        }
 
         user.unban();
+        userBanRepository.findTopByUser_IdAndLiftedAtIsNullOrderByBannedAtDesc(user.getId())
+                .ifPresent(ban -> ban.lift(admin));
 
         return AdminUserResponseDto.from(user, userId);
     }

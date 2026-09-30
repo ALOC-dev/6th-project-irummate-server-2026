@@ -4,7 +4,6 @@ import com.irummate.domain.matching.dto.MatchingConfigDto;
 import com.irummate.domain.matching.service.MatchingConfigService;
 import com.irummate.global.aop.AuthRole;
 import com.irummate.global.aop.RequiresAuth;
-import com.irummate.global.aop.RequiresCertification;
 import com.irummate.global.response.GlobalApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -32,7 +31,7 @@ public class MatchingConfigController {
             @ApiResponse(responseCode = "403", description = "관리자 권한이 필요합니다."),
             @ApiResponse(responseCode = "404", description = "매칭 날짜가 설정되어 있지 않습니다.")
     })
-    @RequiresCertification
+    @RequiresAuth(roles = AuthRole.ADMIN)
     @GetMapping("/match/config")
     public ResponseEntity<GlobalApiResponse<MatchingConfigDto>> getMatchDate(@AuthenticationPrincipal Long userId){
 

@@ -6,7 +6,6 @@ import com.irummate.domain.certification.dto.CertificationStatusResponseDto;
 import com.irummate.domain.certification.entity.Certification;
 import com.irummate.domain.certification.entity.CertificationStatus;
 import com.irummate.domain.certification.repository.CertificationRepository;
-import com.irummate.domain.user.entity.UserRole;
 import com.irummate.domain.user.entity.UserStatus;
 import com.irummate.domain.user.entity.Users;
 import com.irummate.domain.user.repository.UserDetailsRepository;
@@ -64,7 +63,7 @@ public class CertificationService {
                 .user(user)
                 .semester(semester)
                 .imageKey(requestDto.getImageKey())
-                .certificationStatus(CertificationStatus.REQUESTED)
+                .certificationStatus(CertificationStatus.PENDING)
                 .build();
 
         Certification savedCertification = certificationRepository.save(certification);
@@ -73,12 +72,17 @@ public class CertificationService {
                 hashIdsUtils.encode(savedCertification.getId()));
     }
 
+    @Transactional
     public CertificationStatusResponseDto getLatestCertificationStatus(Long userId) {
         Users user = usersRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
-        Certification certification = certificationRepository.findTopByUser_IdOrderByCreatedAtDesc(userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.CERTIFICATION_NOT_FOUND));
+        Optional<Certification> latest = certificationRepository.findTopByUser_IdOrderByCreatedAtDesc(userId);
+        if (latest.isEmpty()) {
+            return CertificationStatusResponseDto.none(hashIdsUtils.encode(user.getId()));
+        }
+        Certification certification = latest.get();
+        expireIfNecessary(certification);
 
         return CertificationStatusResponseDto.from(certification,
                 hashIdsUtils.encode(user.getId()),
@@ -86,8 +90,8 @@ public class CertificationService {
     }
 
     private void validateCertificationEligibility(Long userId, Users user) {
-        if (user.getRole() != UserRole.USER || user.getStatus() != UserStatus.PENDING) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "USER/PENDING 상태에서만 인증 요청이 가능합니다.");
+        if (user.getStatus() != UserStatus.ACTIVE) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "정상 계정만 인증 요청이 가능합니다.");
         }
 
         if (!userDetailsRepository.existsById(userId)) {
@@ -95,9 +99,18 @@ public class CertificationService {
         }
     }
 
+    private void expireIfNecessary(Certification certification) {
+        if (certification.getCertificationStatus() == CertificationStatus.APPROVED
+                && certification.getExpiresAt() != null
+                && !certification.getExpiresAt().isAfter(java.time.LocalDateTime.now())) {
+            certification.expire();
+        }
+    }
+
     private void validateCertificationSubmittable(Optional<Certification> certification) {
         certification
-                .filter(existingCertification -> existingCertification.getCertificationStatus() != CertificationStatus.REJECTED)
+                .filter(existingCertification -> existingCertification.getCertificationStatus() != CertificationStatus.REJECTED
+                        && existingCertification.getCertificationStatus() != CertificationStatus.EXPIRED)
                 .ifPresent(existingCertification -> {
                     throw new BusinessException(ErrorCode.CERTIFICATION_ALREADY_EXISTS);
                 });

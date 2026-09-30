@@ -46,10 +46,20 @@ public class Certification {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "certification_status", nullable = false, length = 20)
-    private CertificationStatus certificationStatus = CertificationStatus.REQUESTED;
+    private CertificationStatus certificationStatus = CertificationStatus.PENDING;
 
     @Column(name = "admin_comment", columnDefinition = "TEXT")
     private String adminComment;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "reviewed_by")
+    private Users reviewedBy;
+
+    @Column(name = "reviewed_at")
+    private LocalDateTime reviewedAt;
+
+    @Column(name = "expires_at")
+    private LocalDateTime expiresAt;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -60,7 +70,7 @@ public class Certification {
         this.semester = semester;
         this.imageKey = imageKey;
         this.certificationStatus = certificationStatus == null
-                ? CertificationStatus.REQUESTED
+                ? CertificationStatus.PENDING
                 : certificationStatus;
         this.adminComment = adminComment;
     }
@@ -70,19 +80,32 @@ public class Certification {
         this.createdAt = LocalDateTime.now();
     }
 
-    public void approve(String adminComment) {
+    public void approve(Users admin, String adminComment, LocalDateTime expiresAt) {
         this.certificationStatus = CertificationStatus.APPROVED;
         this.adminComment = adminComment;
+        this.reviewedBy = admin;
+        this.reviewedAt = LocalDateTime.now();
+        this.expiresAt = expiresAt;
     }
 
-    public void reject(String adminComment) {
+    public void reject(Users admin, String adminComment) {
         this.certificationStatus = CertificationStatus.REJECTED;
         this.adminComment = adminComment;
+        this.reviewedBy = admin;
+        this.reviewedAt = LocalDateTime.now();
+        this.expiresAt = null;
     }
 
     public void resubmit(String imageKey) {
         this.imageKey = imageKey;
-        this.certificationStatus = CertificationStatus.REQUESTED;
+        this.certificationStatus = CertificationStatus.PENDING;
         this.adminComment = null;
+        this.reviewedBy = null;
+        this.reviewedAt = null;
+        this.expiresAt = null;
+    }
+
+    public void expire() {
+        this.certificationStatus = CertificationStatus.EXPIRED;
     }
 }

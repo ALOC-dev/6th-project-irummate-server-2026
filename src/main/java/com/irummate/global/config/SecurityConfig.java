@@ -25,6 +25,7 @@ public class SecurityConfig {
 
         //여기에 프론트 주소 추가하면 됨
         config.setAllowedOrigins(List.of(
+                "http://localhost.com:5173",
                 "https://www.irummate.com",
                 "https://irummate.com"
         ));
@@ -69,6 +70,12 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/auth/kakao/**", // 카카오 로그인 관련 주소들
                                 "/api/auth/refresh",   // 토큰 만료 시 재발급받는 주소
+                                "/api/auth/logout",
+                                "/api/auth/status",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html",
+                                "/v3/api-docs/**",
+                                "/webjars/**",
                                 "/ws/chat/**",
                                 "/error"                 // 에러 발생 시 리다이렉트되는 경로
                         ).permitAll()

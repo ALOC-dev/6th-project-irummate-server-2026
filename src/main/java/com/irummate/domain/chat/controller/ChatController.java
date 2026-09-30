@@ -6,7 +6,6 @@ import com.irummate.domain.chat.dto.ChatReadResult;
 import com.irummate.domain.chat.dto.ChatRoomsResponseDto;
 import com.irummate.domain.chat.dto.ChatUnreadCountResponseDto;
 import com.irummate.domain.chat.service.ChatService;
-import com.irummate.global.aop.RequiresCertification;
 import com.irummate.global.response.GlobalApiResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -31,7 +30,6 @@ public class ChatController {
         this.messagingTemplate = messagingTemplate;
     }
 
-    @RequiresCertification
     @GetMapping("/rooms")
     public ResponseEntity<GlobalApiResponse<ChatRoomsResponseDto>> getChatRooms(
             @AuthenticationPrincipal Long userId
@@ -43,7 +41,6 @@ public class ChatController {
         );
     }
 
-    @RequiresCertification
     @GetMapping("/rooms/{roomId}/messages")
     public ResponseEntity<GlobalApiResponse<ChatMessagesResponseDto>> getMessages(
             @PathVariable Long roomId,
@@ -58,7 +55,6 @@ public class ChatController {
         );
     }
 
-    @RequiresCertification
     @PatchMapping("/rooms/{roomId}/read")
     public ResponseEntity<GlobalApiResponse<ChatReadResponseDto>> markMessagesAsRead(
             @PathVariable Long roomId,
@@ -75,7 +71,6 @@ public class ChatController {
         );
     }
 
-    @RequiresCertification
     @GetMapping("/unread-count")
     public ResponseEntity<GlobalApiResponse<ChatUnreadCountResponseDto>> getTotalUnreadCount(
             @AuthenticationPrincipal Long userId

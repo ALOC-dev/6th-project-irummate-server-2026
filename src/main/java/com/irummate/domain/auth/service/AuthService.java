@@ -5,18 +5,20 @@ import com.irummate.domain.auth.dto.KakaoTokenResponseDto;
 import com.irummate.domain.auth.dto.KakaoUserInfoResponseDto;
 import com.irummate.domain.auth.dto.LoginResponseDto;
 import com.irummate.domain.auth.dto.RefreshTokenResponseDto;
+import com.irummate.domain.auth.entity.LoginSession;
+import com.irummate.domain.auth.repository.LoginSessionRepository;
 import com.irummate.domain.certification.entity.Certification;
 import com.irummate.domain.certification.repository.CertificationRepository;
 import com.irummate.domain.survey.repository.UserPreferencesRepository;
 import com.irummate.domain.user.entity.UserStatus;
 import com.irummate.domain.user.entity.Users;
 import com.irummate.domain.user.repository.UsersRepository;
+import com.irummate.domain.user.repository.UserDetailsRepository;
 import com.irummate.global.config.KakaoProperties;
 import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
 import com.irummate.global.jwt.JwtTokenProvider;
 import com.irummate.global.util.HashIdsUtils;
-import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
@@ -33,6 +35,13 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.Base64;
 import java.util.Optional;
 
 @Slf4j
@@ -47,6 +56,10 @@ public class AuthService {
     private final CertificationRepository certificationRepository;
     private final JwtTokenProvider jwtTokenProvider;
     private final HashIdsUtils hashIdsUtils;
+    private final LoginSessionRepository loginSessionRepository;
+    private final UserDetailsRepository userDetailsRepository;
+
+    private final SecureRandom secureRandom = new SecureRandom();
 
     private final RestTemplate restTemplate = new RestTemplate();
 
@@ -57,15 +70,27 @@ public class AuthService {
 
         UserRegistration userRegistration = findOrCreateUser(userInfo);
         Users user = userRegistration.user();
+        validateAccountUsable(user);
         Long internalUserId = user.getId();
         String encodedUserId = hashIdsUtils.encode(internalUserId);
 
-        String accessToken = jwtTokenProvider.createAccessToken(encodedUserId, user.getRole().name());
-        String refreshToken = jwtTokenProvider.createRefreshToken(encodedUserId, user.getRole().name());
+        String refreshToken = generateRefreshToken();
+        LoginSession loginSession = loginSessionRepository.save(new LoginSession(
+                user,
+                hashRefreshToken(refreshToken),
+                refreshExpiresAt()
+        ));
+        String accessToken = jwtTokenProvider.createAccessToken(
+                encodedUserId,
+                user.getRole().name(),
+                loginSession.getId().toString()
+        );
 
         LoginResponseDto response = LoginResponseDto.builder()
                 .accessToken(accessToken)
                 .isNewUser(userRegistration.isNewUser())
+                .tokenType("Bearer")
+                .accessTokenExpiresIn(jwtTokenProvider.getAccessTokenExpiration() / 1000)
                 .user(LoginResponseDto.UserInfo.builder()
                         .id(encodedUserId)
                         .nickname(user.getNickname())
@@ -77,25 +102,45 @@ public class AuthService {
         return new LoginResult(response, refreshToken);
     }
 
-    public RefreshTokenResponseDto refreshAccessToken(String refreshToken) {
-        if (refreshToken == null || !jwtTokenProvider.validateRefreshToken(refreshToken)) {
-            return null;
+    @Transactional
+    public RefreshResult refreshAccessToken(String refreshToken) {
+        LoginSession session = loginSessionRepository.findByRefreshTokenHash(hashRefreshToken(refreshToken))
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN));
+
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+        if (!session.isAvailable(now)) {
+            session.revoke();
+            throw new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN);
         }
 
-        Claims claims = jwtTokenProvider.parseClaims(refreshToken);
-        String encodedUserId = claims.getSubject();
-        Long internalUserId = hashIdsUtils.decode(encodedUserId);
+        Users user = session.getUser();
+        validateAccountUsable(user);
 
-        Users user = usersRepository.findById(Long.valueOf(internalUserId)).orElse(null);
-        if (user == null || user.getStatus() == UserStatus.WITHDRAWN) {
-            return null;
-        }
+        String newRefreshToken = generateRefreshToken();
+        session.rotate(hashRefreshToken(newRefreshToken), refreshExpiresAt());
 
-        String accessToken = jwtTokenProvider.createAccessToken(encodedUserId, user.getRole().name());
+        String accessToken = jwtTokenProvider.createAccessToken(
+                hashIdsUtils.encode(user.getId()),
+                user.getRole().name(),
+                session.getId().toString()
+        );
 
-        return RefreshTokenResponseDto.builder()
+        RefreshTokenResponseDto response = RefreshTokenResponseDto.builder()
                 .accessToken(accessToken)
+                .tokenType("Bearer")
+                .accessTokenExpiresIn(jwtTokenProvider.getAccessTokenExpiration() / 1000)
                 .build();
+
+        return new RefreshResult(response, newRefreshToken);
+    }
+
+    @Transactional
+    public void logout(String refreshToken) {
+        if (refreshToken == null || refreshToken.isBlank()) {
+            return;
+        }
+        loginSessionRepository.findByRefreshTokenHash(hashRefreshToken(refreshToken))
+                .ifPresent(LoginSession::revoke);
     }
 
     public AuthStatusResponseDto getCurrentUserStatus() {
@@ -135,10 +180,9 @@ public class AuthService {
                         .role(user.getRole().name())
                         .status(user.getStatus().name())
                         .certificationStatus(
-                                latestCertification != null
-                                        ? latestCertification.getCertificationStatus().name()
-                                        : null
+                                currentCertificationStatus(latestCertification)
                         )
+                        .detailsCompleted(userDetailsRepository.existsById(user.getId()))
                         .surveyCompleted(isSurveyCompleted(userId))
                         .build())
                 .build();
@@ -161,6 +205,36 @@ public class AuthService {
                 .build();
 
         return new UserRegistration(usersRepository.save(newUser), true);
+    }
+
+    private void validateAccountUsable(Users user) {
+        if (user.getStatus() == UserStatus.BANNED) {
+            throw new BusinessException(ErrorCode.ACCOUNT_BANNED);
+        }
+        if (user.getStatus() == UserStatus.WITHDRAWN) {
+            throw new BusinessException(ErrorCode.ACCOUNT_WITHDRAWN);
+        }
+    }
+
+    private String generateRefreshToken() {
+        byte[] bytes = new byte[32];
+        secureRandom.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    private String hashRefreshToken(String refreshToken) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(refreshToken.getBytes(StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 algorithm is unavailable", e);
+        }
+    }
+
+    private LocalDateTime refreshExpiresAt() {
+        return LocalDateTime.now(ZoneId.of("Asia/Seoul"))
+                .plusNanos(jwtTokenProvider.getRefreshTokenExpiration() * 1_000_000);
     }
 
     private KakaoTokenResponseDto getKakaoToken(String code) {
@@ -223,7 +297,22 @@ public class AuthService {
                 .orElse(false);
     }
 
+    private String currentCertificationStatus(Certification certification) {
+        if (certification == null) {
+            return "NONE";
+        }
+        if (certification.getCertificationStatus() == com.irummate.domain.certification.entity.CertificationStatus.APPROVED
+                && certification.getExpiresAt() != null
+                && !certification.getExpiresAt().isAfter(LocalDateTime.now(ZoneId.of("Asia/Seoul")))) {
+            return com.irummate.domain.certification.entity.CertificationStatus.EXPIRED.name();
+        }
+        return certification.getCertificationStatus().name();
+    }
+
     public record LoginResult(LoginResponseDto response, String refreshToken) {
+    }
+
+    public record RefreshResult(RefreshTokenResponseDto response, String refreshToken) {
     }
 
     private record UserRegistration(Users user, boolean isNewUser) {

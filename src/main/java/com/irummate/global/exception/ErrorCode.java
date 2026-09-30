@@ -29,6 +29,8 @@ public enum ErrorCode {
     // ── 403 ──
     FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
     ADMIN_ONLY(HttpStatus.FORBIDDEN, "관리자 권한이 필요합니다."),
+    ACCOUNT_BANNED(HttpStatus.FORBIDDEN, "정지된 계정입니다."),
+    ACCOUNT_WITHDRAWN(HttpStatus.FORBIDDEN, "탈퇴한 계정입니다."),
     CERTIFICATION_REQUIRED(HttpStatus.FORBIDDEN, "기숙사 인증이 필요합니다."),
     SURVEY_REQUIRED(HttpStatus.FORBIDDEN, "설문 작성이 필요합니다."),
     NOT_CHAT_PARTICIPANT(HttpStatus.FORBIDDEN, "해당 채팅방의 참여자가 아닙니다."),

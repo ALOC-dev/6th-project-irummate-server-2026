@@ -113,4 +113,13 @@ public class MatchRequests {
         return userLowStatus == MatchStatus.REJECTED
                 || userHighStatus == MatchStatus.REJECTED;
     }
+
+    public void closeForWithdrawal(Long userId) {
+        updateStatusOf(userId, MatchStatus.CLOSED);
+        if (userLow.getId().equals(userId)) {
+            this.userLowPreferences = null;
+        } else if (userHigh.getId().equals(userId)) {
+            this.userHighPreferences = null;
+        }
+    }
 }

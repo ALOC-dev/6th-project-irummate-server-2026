@@ -44,16 +44,18 @@ public class Users {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private UserRole role = UserRole.GUEST; // GUEST, USER, ADMIN
+    private UserRole role = UserRole.USER;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private UserStatus status = UserStatus.PENDING; // ACTIVE, PENDING, BANNED
+    private UserStatus status = UserStatus.ACTIVE;
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
+
+    private LocalDateTime withdrawnAt;
 
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private UserDetails userDetails;
@@ -78,11 +80,7 @@ public class Users {
         this.email = email;
         this.nickname = nickname;
         this.profileImageUrl = profileImageUrl;
-        this.role = UserRole.GUEST;
-        this.status = UserStatus.PENDING;
-    }
-
-    public void activate() {
+        this.role = UserRole.USER;
         this.status = UserStatus.ACTIVE;
     }
 
@@ -94,12 +92,9 @@ public class Users {
         this.status = UserStatus.ACTIVE;
     }
 
-    public void promoteToUser() {
-        this.role = UserRole.USER;
-    }
-
     public void withdraw() {
         this.status = UserStatus.WITHDRAWN;
+        this.withdrawnAt = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
         this.oauthId = this.oauthId + "_withdrawn_" + System.currentTimeMillis();
         this.nickname = "\uD0C8\uD1F4\uD55C \uC0AC\uC6A9\uC790";
         this.email = null;

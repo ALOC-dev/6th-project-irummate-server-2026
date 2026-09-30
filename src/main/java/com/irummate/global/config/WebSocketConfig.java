@@ -60,6 +60,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         registry.addEndpoint("/ws/chat")
                 // 프론트 로컬 개발 서버와 백엔드 정적 테스트 페이지에서만 웹소켓 연결을 허용한다.
                 .setAllowedOriginPatterns(
+                        "http://localhost.com:5173",
                         "https://www.irummate.com",
                         "https://irummate.com"
                 )
@@ -102,6 +103,10 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                     try {
                         Claims claims = jwtTokenProvider.parseClaims(token);
                         userId = hashIdsUtils.decode(claims.getSubject());
+                        String sessionId = claims.get("sid", String.class);
+                        if (sessionId == null || sessionId.isBlank()) {
+                            throw new BusinessException(ErrorCode.WEBSOCKET_UNAUTHORIZED);
+                        }
                     } catch (RuntimeException e) {
                         throw new BusinessException(ErrorCode.WEBSOCKET_UNAUTHORIZED);
                     }
@@ -114,7 +119,12 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 }
 
                 if (StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
+                    validateActiveUser(resolveUserId(accessor.getUser()));
                     validateSubscribe(accessor);
+                }
+
+                if (StompCommand.SEND.equals(accessor.getCommand())) {
+                    validateActiveUser(resolveUserId(accessor.getUser()));
                 }
 
                 return message;
@@ -126,6 +136,12 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         return usersRepository.findById(userId)
                 .map(user -> user.getStatus() == UserStatus.ACTIVE)
                 .orElse(false);
+    }
+
+    private void validateActiveUser(Long userId) {
+        if (!isActiveUser(userId)) {
+            throw new BusinessException(ErrorCode.WEBSOCKET_UNAUTHORIZED);
+        }
     }
 
     private void validateSubscribe(StompHeaderAccessor accessor) {

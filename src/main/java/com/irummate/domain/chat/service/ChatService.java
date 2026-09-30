@@ -214,7 +214,7 @@ public class ChatService {
     public ChatMessageResponseDto sendMessage(Long roomId, Long senderId, String message) {
         validateSendRequest(roomId, senderId, message);
         ChatRoom chatRoom = getChatRoom(roomId);
-        validateCertifiedUser(senderId);
+        validateActiveUser(senderId);
         validateSendable(chatRoom);
         validateRoomParticipant(roomId, senderId);
 
@@ -324,7 +324,7 @@ public class ChatService {
         }
     }
 
-    private void validateCertifiedUser(Long userId) {
+    private void validateActiveUser(Long userId) {
         Users user = getUser(userId);
 
         if (user.getStatus() != UserStatus.ACTIVE) {

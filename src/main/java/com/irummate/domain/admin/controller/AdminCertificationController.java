@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 import java.util.List;
 
@@ -56,9 +57,10 @@ public class AdminCertificationController {
     @PatchMapping("/{certificationId}/approve")
     @RequiresAuth(roles = AuthRole.ADMIN)
     public ResponseEntity<GlobalApiResponse<AdminCertificationResponseDto>> approveCertification(
+            @AuthenticationPrincipal Long adminUserId,
             @PathVariable String certificationId
     ) {
-        AdminCertificationResponseDto responseDto = adminCertificationService.approveCertification(certificationId);
+        AdminCertificationResponseDto responseDto = adminCertificationService.approveCertification(adminUserId, certificationId);
 
         return ResponseEntity.ok(
                 GlobalApiResponse.success(HttpStatus.OK, "인증 요청 승인 성공", responseDto)
@@ -68,10 +70,11 @@ public class AdminCertificationController {
     @PatchMapping("/{certificationId}/reject")
     @RequiresAuth(roles = AuthRole.ADMIN)
     public ResponseEntity<GlobalApiResponse<AdminCertificationResponseDto>> rejectCertification(
+            @AuthenticationPrincipal Long adminUserId,
             @PathVariable String certificationId,
             @Valid @RequestBody AdminCertificationRejectRequestDto requestDto
     ) {
-        AdminCertificationResponseDto responseDto = adminCertificationService.rejectCertification(certificationId, requestDto);
+        AdminCertificationResponseDto responseDto = adminCertificationService.rejectCertification(adminUserId, certificationId, requestDto);
 
         return ResponseEntity.ok(
                 GlobalApiResponse.success(HttpStatus.OK, "인증 요청 거절 성공", responseDto)

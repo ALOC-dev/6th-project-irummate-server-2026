@@ -1,7 +1,8 @@
 package com.irummate.domain.certification.entity;
 
 public enum CertificationStatus {
-    REQUESTED,
+    PENDING,
     APPROVED,
-    REJECTED
+    REJECTED,
+    EXPIRED
 }

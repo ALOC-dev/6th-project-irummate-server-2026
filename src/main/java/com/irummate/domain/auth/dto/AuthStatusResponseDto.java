@@ -18,6 +18,7 @@ public class AuthStatusResponseDto {
         private final String role;
         private final String status;
         private final String certificationStatus;
+        private final Boolean detailsCompleted;
         private final Boolean surveyCompleted;
     }
 }

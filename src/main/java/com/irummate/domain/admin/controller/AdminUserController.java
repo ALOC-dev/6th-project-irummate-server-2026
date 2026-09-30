@@ -3,6 +3,7 @@ package com.irummate.domain.admin.controller;
 import com.irummate.domain.admin.dto.AdminUserDetailResponseDto;
 import com.irummate.domain.admin.dto.AdminUserResponseDto;
 import com.irummate.domain.admin.dto.AdminUsersResponseDto;
+import com.irummate.domain.admin.dto.AdminUserBanRequestDto;
 import com.irummate.domain.admin.service.AdminUserService;
 import com.irummate.global.aop.AuthRole;
 import com.irummate.global.aop.RequiresAuth;
@@ -17,6 +18,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestBody;
+import jakarta.validation.Valid;
 
 @RestController
 @RequiredArgsConstructor
@@ -56,9 +59,10 @@ public class AdminUserController {
     @RequiresAuth(roles = AuthRole.ADMIN)
     public ResponseEntity<GlobalApiResponse<AdminUserResponseDto>> banUser(
             @AuthenticationPrincipal Long adminUserId,
-            @PathVariable String userId
+            @PathVariable String userId,
+            @Valid @RequestBody AdminUserBanRequestDto request
     ) {
-        AdminUserResponseDto responseDto = adminUserService.banUser(userId);
+        AdminUserResponseDto responseDto = adminUserService.banUser(adminUserId, userId, request);
 
         return ResponseEntity.ok(
                 GlobalApiResponse.success(HttpStatus.OK, "회원 정지 성공", responseDto)
@@ -71,7 +75,7 @@ public class AdminUserController {
             @AuthenticationPrincipal Long adminUserId,
             @PathVariable String userId
     ) {
-        AdminUserResponseDto responseDto = adminUserService.unbanUser(userId);
+        AdminUserResponseDto responseDto = adminUserService.unbanUser(adminUserId, userId);
 
         return ResponseEntity.ok(
                 GlobalApiResponse.success(HttpStatus.OK, "회원 정지 해제 성공", responseDto)

@@ -4,7 +4,6 @@ import com.irummate.domain.certification.dto.CertificationPresignRequestDto;
 import com.irummate.domain.certification.dto.CertificationPresignResponseDto;
 import com.irummate.domain.certification.entity.CertificationStatus;
 import com.irummate.domain.certification.repository.CertificationRepository;
-import com.irummate.domain.user.entity.UserRole;
 import com.irummate.domain.user.entity.UserStatus;
 import com.irummate.domain.user.entity.Users;
 import com.irummate.domain.user.repository.UserDetailsRepository;
@@ -38,8 +37,8 @@ public class CertificationPresignService {
         Users me = usersRepository.findById(userId)
                 .orElseThrow(()->new BusinessException(ErrorCode.USER_NOT_FOUND));
 
-        if(me.getRole() != UserRole.USER || me.getStatus() != UserStatus.PENDING){
-            throw new BusinessException(ErrorCode.FORBIDDEN, "USER/PENDING 상태에서만 업로드 URL을 발급할 수 있습니다.");
+        if(me.getStatus() != UserStatus.ACTIVE){
+            throw new BusinessException(ErrorCode.FORBIDDEN, "정상 계정만 업로드 URL을 발급할 수 있습니다.");
         }
 
         if(!userDetailsRepository.existsById(userId)){
@@ -64,6 +63,7 @@ public class CertificationPresignService {
     private void ensureUploadUrlIssuable(Long userId, String semester) {
         certificationRepository.findByUser_IdAndSemester(userId, semester)
                 .filter(certification -> certification.getCertificationStatus() != CertificationStatus.REJECTED)
+                .filter(certification -> certification.getCertificationStatus() != CertificationStatus.EXPIRED)
                 .ifPresent(certification -> {
                     throw new BusinessException(ErrorCode.CERTIFICATION_ALREADY_EXISTS);
                 });

@@ -27,4 +27,6 @@ public interface CertificationRepository extends JpaRepository<Certification, Lo
     Optional<Certification> findTopByUser_IdOrderByCreatedAtDesc(Long userId);
 
     boolean existsByUser_IdAndSemester(Long userId, String semester);
+
+    void deleteAllByUser_Id(Long userId);
 }
