@@ -4,9 +4,11 @@ import java.util.List;
 import java.util.Optional;
 
 import jakarta.persistence.LockModeType;
+import jakarta.persistence.QueryHint;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
@@ -19,6 +21,8 @@ public interface UserPreferencesRepository extends JpaRepository<UserPreferences
         Long getUserId();
         Double getMatchPercentage();
     }
+
+
 
     Optional<UserPreferences> findByUserId(Long userId);
 
@@ -36,7 +40,7 @@ public interface UserPreferencesRepository extends JpaRepository<UserPreferences
         SELECT
             up.user_id AS userId,
             ROUND(
-                (50 + (GREATEST(0, 1 - ((up.lifestyle_vector <-> CAST(:vector AS vector)) / 3.0)) * 50))::numeric,
+                (50 + (GREATEST(0, 1 - ((up.lifestyle_vector <-> CAST(:vector AS vector)) / 3.0)) * 40))::numeric,
                 1
             )::double precision AS matchPercentage
         FROM user_preferences up
@@ -66,38 +70,39 @@ public interface UserPreferencesRepository extends JpaRepository<UserPreferences
             @Param("limit") int limit
     );
 
-
+    // 흡연 필터링 완화한 후보자 탐색
     @Query(value = """
-        SELECT
-            up.user_id AS userId,
-            ROUND(
-                (50 + (GREATEST(0, 1 - ((up.lifestyle_vector <-> CAST(:vector AS vector)) / 3.0)) * 50))::numeric,
-                1
-            )::double precision AS matchPercentage
-        FROM user_preferences up
-        JOIN users u ON up.user_id = u.id
-        JOIN user_details ud ON up.user_id = ud.user_id
-        WHERE u.status = 'ACTIVE'
-          AND u.role = 'USER'
-          AND up.is_completed = true
-          AND up.is_matched = false
-          AND up.user_id != :myUserId
-          AND ud.gender = :gender
-          AND up.user_id NOT IN (:excludedUserIds)
-          AND NOT EXISTS (
-              SELECT 1
-              FROM match_requests mr
-              WHERE mr.user_low_id = LEAST(:myUserId, up.user_id)
-                AND mr.user_high_id = GREATEST(:myUserId, up.user_id)
-          )
-        ORDER BY up.lifestyle_vector <-> CAST(:vector AS vector)
-        LIMIT :limit
-    """, nativeQuery = true)
+       SELECT
+           up.user_id AS userId,
+           ROUND(
+               (50 + (GREATEST(
+                   0,
+                   1 - ((up.lifestyle_vector <-> CAST(:vector AS vector)) / 3.0)
+               ) * 40))::numeric,
+               1
+           )::double precision AS matchPercentage
+       FROM user_preferences up
+       JOIN users u ON up.user_id = u.id
+       JOIN user_details ud ON up.user_id = ud.user_id
+       WHERE u.status = 'ACTIVE'
+         AND u.role = 'USER'
+         AND up.is_completed = true
+         AND up.is_matched = false
+         AND up.user_id != :myUserId
+         AND ud.gender = :gender
+         AND NOT EXISTS (
+             SELECT 1
+             FROM match_requests mr
+             WHERE mr.user_low_id = LEAST(:myUserId, up.user_id)
+               AND mr.user_high_id = GREATEST(:myUserId, up.user_id)
+         )
+       ORDER BY up.lifestyle_vector <-> CAST(:vector AS vector)
+       LIMIT :limit
+       """, nativeQuery = true)
     List<RecommendationCandidate> findNewRecommendationCandidatesIgnoringSmoking(
             @Param("myUserId") Long myUserId,
             @Param("gender") String gender,
-            @Param("excludedUserIds") List<Long> excludedUserIds,
-            @Param("vector") String vector,   // ← String으로
+            @Param("vector") String vector,
             @Param("limit") int limit
     );
 
@@ -115,6 +120,12 @@ public interface UserPreferencesRepository extends JpaRepository<UserPreferences
 
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @QueryHints(
+            @QueryHint(
+                    name = "jakarta.persistence.lock.timeout",
+                    value = "0"
+            )
+    )
     @Query("""
     SELECT up
     FROM UserPreferences up

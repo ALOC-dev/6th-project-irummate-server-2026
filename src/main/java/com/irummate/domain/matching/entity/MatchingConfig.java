@@ -21,6 +21,9 @@ public class MatchingConfig {
     @Column(name = "config_id")
     private Long id = SINGLETON_ID;
 
+    @Column(name = "survey_start_date", nullable = false)
+    private LocalDate surveyStartDate;
+
     @Column(name = "match_start_date", nullable = false)
     private LocalDate matchStartDate;
 
@@ -36,12 +39,16 @@ public class MatchingConfig {
         this.updatedAt = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
     }
 
-    public MatchingConfig(LocalDate matchStartDate,
+    public MatchingConfig(LocalDate surveyStartDate,
+                          LocalDate matchStartDate,
                           LocalDate matchEndDate){
         this.id = SINGLETON_ID;
+        this.surveyStartDate = surveyStartDate;
         this.matchStartDate = matchStartDate;
         this.matchEndDate = matchEndDate;
     }
+
+    public void updateSurveyStartDate(LocalDate surveyStartDate) { this.surveyStartDate = surveyStartDate; }
 
     public void updateMatchStartDate(LocalDate matchStartDate) {
         this.matchStartDate = matchStartDate;

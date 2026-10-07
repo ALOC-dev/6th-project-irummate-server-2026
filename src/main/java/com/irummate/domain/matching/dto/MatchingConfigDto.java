@@ -14,6 +14,9 @@ import java.time.LocalDate;
 @Setter
 public class MatchingConfigDto {
     @NotNull
+    private LocalDate surveyStartDate;
+
+    @NotNull
     private LocalDate matchStartDate;
 
     @NotNull

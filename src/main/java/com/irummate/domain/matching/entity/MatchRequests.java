@@ -27,19 +27,19 @@ public class MatchRequests {
     @Column(name = "match_request_id")
     private Long id;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_low_id")
     private Users userLow;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_high_id")
     private Users userHigh;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_low_preferences_id")
     private UserPreferences userLowPreferences;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_high_preferences_id")
     private UserPreferences userHighPreferences;
 
@@ -79,6 +79,8 @@ public class MatchRequests {
         throw new IllegalArgumentException("User is not part of this match request.");
     }
 
+    // 특정 사용자의 matchStatus를 업데이트
+    // userlow, userhigh는 함수가 구분
     public void updateStatusOf(Long userId, MatchStatus status) {
         if (userLow.getId().equals(userId)) {
             this.userLowStatus = status;

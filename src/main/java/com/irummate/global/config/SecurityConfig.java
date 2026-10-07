@@ -77,6 +77,10 @@ public class SecurityConfig {
                                 "/v3/api-docs/**",
                                 "/webjars/**",
                                 "/ws/chat/**",
+                                // 테스트 서버 Swagger
+                                "/swagger-ui.html",
+                                "/swagger-ui/**",
+                                "/v3/api-docs/**",
                                 "/error"                 // 에러 발생 시 리다이렉트되는 경로
                         ).permitAll()
 

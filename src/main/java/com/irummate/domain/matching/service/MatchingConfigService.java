@@ -23,20 +23,26 @@ public class MatchingConfigService {
 
 
     @Transactional
-    public void setMatchDate(LocalDate matchStartDate,
+    public void setMatchDate(LocalDate surveyStartDate,
+                             LocalDate matchStartDate,
                              LocalDate matchEndDate){
 
-        if (matchStartDate == null || matchEndDate == null) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "매칭 시작일과 종료일은 필수입니다.");
+        if (surveyStartDate == null || matchStartDate == null || matchEndDate == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "설문 시작일과 매칭 시작일, 종료일은 필수입니다.");
         }
 
         if (matchStartDate.isAfter(matchEndDate)) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "매칭 시작일은 종료일보다 늦을 수 없습니다.");
         }
 
-        MatchingConfig config = matchingConfigRepository.findById(MatchingConfig.SINGLETON_ID)
-                .orElseGet(()->new MatchingConfig(matchStartDate, matchEndDate));
+        if (surveyStartDate.isAfter(matchStartDate)){
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "설문 시작일은 매칭 시작일보다 늦을 수 없습니다.");
+        }
 
+        MatchingConfig config = matchingConfigRepository.findById(MatchingConfig.SINGLETON_ID)
+                .orElseGet(()->new MatchingConfig(surveyStartDate, matchStartDate, matchEndDate));
+
+        config.updateSurveyStartDate(surveyStartDate);
         config.updateMatchStartDate(matchStartDate);
         config.updateMatchEndDate(matchEndDate);
         matchingConfigRepository.save(config);
@@ -49,6 +55,7 @@ public class MatchingConfigService {
                 .orElseThrow(()->new BusinessException(ErrorCode.MATCH_DATE_NOT_FOUND));
 
         MatchingConfigDto matchingConfigDto = new MatchingConfigDto();
+        matchingConfigDto.setSurveyStartDate(config.getSurveyStartDate());
         matchingConfigDto.setMatchStartDate(config.getMatchStartDate());
         matchingConfigDto.setMatchEndDate(config.getMatchEndDate());
 
