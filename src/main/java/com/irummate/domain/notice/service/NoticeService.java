@@ -1,6 +1,10 @@
 package com.irummate.domain.notice.service;
 
 import com.irummate.domain.notice.dto.NoticeResponseDto;
+import com.irummate.domain.notice.dto.NoticeIngestRequestDto;
+import com.irummate.domain.notice.dto.NoticeIngestResponseDto;
+import java.util.List;
+import java.util.TreeMap;
 import com.irummate.domain.notice.dto.NoticesResponseDto;
 import com.irummate.domain.notice.repository.NoticeRepository;
 import com.irummate.global.exception.BusinessException;
@@ -17,6 +21,26 @@ public class NoticeService {
 
     public NoticeService(NoticeRepository noticeRepository) {
         this.noticeRepository = noticeRepository;
+    }
+
+    @Transactional
+    public NoticeIngestResponseDto ingest(NoticeIngestRequestDto requestDto) {
+        // 중복은 마지막 항목을 사용하고 ID 순서로 잠금을 획득한다.
+        var unique = new TreeMap<String, NoticeIngestRequestDto.Item>();
+        requestDto.getNotices().forEach(item -> unique.put(item.getExternalId(), item));
+        int inserted = 0, updated = 0, unchanged = 0;
+        for (var item : unique.values()) {
+            List<Boolean> result = noticeRepository.upsert(item.getExternalId(), item.getTitle(),
+                    item.getPublishedAt(), item.getUrl());
+            if (result.isEmpty()) {
+                unchanged++;
+            } else if (result.getFirst()) {
+                inserted++;
+            } else {
+                updated++;
+            }
+        }
+        return new NoticeIngestResponseDto(inserted, updated, unchanged);
     }
 
     @Transactional(readOnly = true)

@@ -4,6 +4,7 @@ package com.irummate.global.exception;
 import com.irummate.global.response.GlobalApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.http.HttpHeaders;
@@ -21,11 +22,11 @@ import java.util.List;
 public class GlobalExceptionController {
 
     // 요청 관리 Handler
-    // 기존 API 오류 정책은 유지하고 공지 조회의 쿼리 형식 오류만 400으로 처리한다.
-    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
-    public ResponseEntity<GlobalApiResponse<?>> handleNoticeQueryFormat(MethodArgumentTypeMismatchException e, HttpServletRequest request) {
+    // 기존 API 오류 정책은 유지하고 공지 API의 JSON/쿼리 형식 오류만 400으로 처리한다.
+    @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class})
+    public ResponseEntity<GlobalApiResponse<?>> handleNoticeInputFormat(Exception e, HttpServletRequest request) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
-        if (!"/api/notices".equals(path)) {
+        if (!"/api/notices".equals(path) && !"/internal/notices".equals(path)) {
             return handleException(e);
         }
         return ResponseEntity.badRequest().body(GlobalApiResponse.error(
