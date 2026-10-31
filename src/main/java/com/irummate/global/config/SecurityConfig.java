@@ -2,6 +2,7 @@ package com.irummate.global.config;
 
 import com.irummate.global.jwt.JwtAuthenticationFilter;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpMethod;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -66,6 +67,7 @@ public class SecurityConfig {
 
                 // API별 통행 지정
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.GET, "/api/notices").permitAll()
                         // 아래에 적힌 주소들은 로그인 없이 누구나 '무사 통과(permitAll)'할 수 있도록 열어둠
                         .requestMatchers(
                                 "/api/auth/kakao/**", // 카카오 로그인 관련 주소들
