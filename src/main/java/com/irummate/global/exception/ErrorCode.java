@@ -18,6 +18,7 @@ public enum ErrorCode {
     EMPTY_CHAT_MESSAGE(HttpStatus.BAD_REQUEST, "채팅 메시지가 내용이 비어있습니다."),
     CHAT_MESSAGE_TOO_LONG(HttpStatus.BAD_REQUEST, "채팅 메시지는 500자를 초과할 수 없습니다"),
     INVALID_WEBSOCKET_DESTINATION(HttpStatus.BAD_REQUEST, "유효하지 않은 웹소켓 구독 주소입니다."),
+    INVALID_RECRUITMENT_PERIOD(HttpStatus.BAD_REQUEST, "모집 마감 일시는 활동 일시보다 이전이어야 합니다."),
 
     // ── 401 ──
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증이 필요합니다."),
@@ -40,6 +41,8 @@ public enum ErrorCode {
     SURVEY_NOT_OPEN(HttpStatus.FORBIDDEN, "오늘은 설문 가능 날짜가 아닙니다."),
     ADMIN_CERTIFICATION_NOT_ALLOWED(HttpStatus.FORBIDDEN, "관리자 계정은 인증 요청을 생성할 수 없습니다."),
     USER_DETAILS_REQUIRED(HttpStatus.FORBIDDEN, "필수 정보 입력 후 인증 요청을 할 수 있습니다."),
+    NOT_RECRUITMENT_AUTHOR(HttpStatus.FORBIDDEN, "해당 모집글의 작성자만 수행할 수 있습니다."),
+    CANNOT_JOIN_OWN_RECRUITMENT(HttpStatus.FORBIDDEN, "자신이 작성한 모집글에는 참여할 수 없습니다."),
 
     // ── 404 ──
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "유저를 찾을 수 없습니다."),
@@ -49,6 +52,8 @@ public enum ErrorCode {
     CHAT_ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "채팅방을 찾을 수 없습니다."),
     MATCH_CANDIDATE_NOT_FOUND(HttpStatus.NOT_FOUND, "추천 가능한 매칭 상대가 없습니다."),
     MATCH_DATE_NOT_FOUND(HttpStatus.NOT_FOUND, "매칭 날짜가 설정되어 있지 않습니다."),
+    RECRUITMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "모집글을 찾을 수 없습니다."),
+    RECRUITMENT_PARTICIPANT_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 모집글의 참여자를 찾을 수 없습니다."),
 
     // ── 409 ──
     DETAILS_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 필수 정보가 등록된 상태입니다."),
@@ -62,6 +67,15 @@ public enum ErrorCode {
     NOT_HEARTABLE_STATUS(HttpStatus.CONFLICT, "하트를 전달할 수 없는 상태입니다."),
     NOT_CONFIRMABLE_STATUS(HttpStatus.CONFLICT, "매칭을 확정할 수 없는 상태입니다."),
     MATCH_IN_PROGRESS(HttpStatus.CONFLICT, "매칭 추천을 처리 중입니다."),
+    RECRUITMENT_ALREADY_PARTICIPATED(HttpStatus.CONFLICT, "이미 참여했거나 참여 이력이 있는 모집글입니다."),
+    RECRUITMENT_NOT_OPEN(HttpStatus.CONFLICT, "현재 모집 중인 게시글이 아닙니다."),
+    RECRUITMENT_FULL(HttpStatus.CONFLICT, "모집 정원이 가득 찼습니다."),
+    RECRUITMENT_DEADLINE_PASSED(HttpStatus.CONFLICT, "모집 마감 시간이 지났습니다."),
+    RECRUITMENT_PARTICIPANT_NOT_ACTIVE(HttpStatus.CONFLICT, "현재 참여 중인 상태가 아닙니다."),
+    RECRUITMENT_HOST_CANNOT_LEAVE(HttpStatus.CONFLICT, "모집자는 참여 취소 대신 모집글을 취소해야 합니다."),
+    RECRUITMENT_HOST_CANNOT_BE_REMOVED(HttpStatus.CONFLICT, "모집자는 참여자에서 제외할 수 없습니다."),
+    INVALID_RECRUITMENT_STATUS_TRANSITION(HttpStatus.CONFLICT, "요청한 모집글 상태로 변경할 수 없습니다."),
+    RECRUITMENT_UPDATE_CONFLICT(HttpStatus.CONFLICT, "모집글이 동시에 변경되었습니다. 다시 시도해 주세요."),
 
     // ── 422 ──
     NOT_ACCEPTED_STATUS(HttpStatus.UNPROCESSABLE_ENTITY, "ACCEPTED 상태에서만 확정할 수 있습니다."),

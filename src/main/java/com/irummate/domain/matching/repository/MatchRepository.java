@@ -323,16 +323,35 @@ public interface MatchRepository extends JpaRepository<MatchRequests, Long> {
     List<MatchRequests> findAllVisibleByUserId(@Param("userId") Long userId);
 
 
-    @Query("""
-    SELECT mr
-    FROM MatchRequests mr
-    WHERE mr.id <> :confirmedMatchRequestId
-    AND (
-        mr.userLow.id = :userId
-        OR mr.userHigh.id = :userId
-    )
-    """)
-    List<MatchRequests> findAllByUserIdExceptConfirmed(
+    // 최종 매칭 확정 시 해당 사용자의 다른 매칭들을 종료하는 쿼리
+    // 최종 확정된 MatchRequest는 제외하며 사용자의 상태만 CLOSED로 변경
+    // 여러 MatchRequest를 불러오지 않고 하나의 update 쿼리로 처리
+    @Modifying(flushAutomatically = true)
+    @Query(value = """
+    UPDATE match_requests mr
+    SET
+        user_low_status = CASE
+            WHEN mr.user_low_id = :userId
+            THEN 'CLOSED'
+            ELSE mr.user_low_status
+        END,
+        user_high_status = CASE
+            WHEN mr.user_high_id = :userId
+            THEN 'CLOSED'
+            ELSE mr.user_high_status
+        END
+    WHERE mr.match_request_id <> :confirmedMatchRequestId
+      AND (
+          mr.user_low_id = :userId
+          OR mr.user_high_id = :userId
+      )
+      AND (
+          (mr.user_low_id = :userId AND mr.user_low_status <> 'CLOSED')
+          OR
+          (mr.user_high_id = :userId AND mr.user_high_status <> 'CLOSED')
+      )
+    """, nativeQuery = true)
+    int closeOtherMatchRequestsForUser(
             @Param("userId") Long userId,
             @Param("confirmedMatchRequestId") Long confirmedMatchRequestId
     );
@@ -360,11 +379,36 @@ public interface MatchRepository extends JpaRepository<MatchRequests, Long> {
             @Param("userId2") Long userId2
     );
 
-    @Query("""
-    SELECT mr
-    FROM MatchRequests mr
-    WHERE mr.userLow.id = :userId
-    OR mr.userHigh.id = :userId
-    """)
-    List<MatchRequests> findAllByUserId(@Param("userId") Long userId);
+    // 정지 등의 사유로 해당 사용자의 진행 중인 매칭들을 종료하는 쿼리
+    // 양쪽 모두 최종 확정된 MatchRequest는 제외하며 사용자의 상태만 CLOSED로 변경
+    // 이미 CLOSED인 상태는 제외하고 하나의 update 쿼리로 처리
+    @Modifying(flushAutomatically = true)
+    @Query(value = """
+    UPDATE match_requests mr
+    SET
+        user_low_status = CASE
+            WHEN mr.user_low_id = :userId
+            THEN 'CLOSED'
+            ELSE mr.user_low_status
+        END,
+        user_high_status = CASE
+            WHEN mr.user_high_id = :userId
+            THEN 'CLOSED'
+            ELSE mr.user_high_status
+        END
+    WHERE (
+        mr.user_low_id = :userId
+        OR mr.user_high_id = :userId
+    )
+      AND NOT (
+          mr.user_low_status = 'FINAL_CONFIRMED'
+          AND mr.user_high_status = 'FINAL_CONFIRMED'
+      )
+      AND (
+          (mr.user_low_id = :userId AND mr.user_low_status <> 'CLOSED')
+          OR
+          (mr.user_high_id = :userId AND mr.user_high_status <> 'CLOSED')
+      )
+    """, nativeQuery = true)
+    int closeUnconfirmedMatchRequestsForUser(@Param("userId") Long userId);
 }

@@ -621,12 +621,13 @@ public class MatchingService {
     }
 
 
+    // 최종 매칭 확정 시 확정된 MatchRequest를 제외한
+    // 사용자의 다른 MatchRequest 상태를 일괄적으로 CLOSED 처리
     private void closeOtherMatchRequests(Long userId, MatchRequests confirmedMatchRequest){
-        List<MatchRequests> myOtherMatchRequests = matchRepository.findAllByUserIdExceptConfirmed(userId, confirmedMatchRequest.getId());
-
-        for(MatchRequests matchRequest : myOtherMatchRequests){
-            matchRequest.updateStatusOf(userId, MatchStatus.CLOSED);
-        }
+        matchRepository.closeOtherMatchRequestsForUser(
+                userId,
+                confirmedMatchRequest.getId()
+        );
     }
 
 
@@ -647,27 +648,13 @@ public class MatchingService {
     }
 
 
-    /**
-     * 역할: 특정 유저(정지/탈퇴 등)와 연관된 진행 중 match request를 CLOSED 처리합니다.
-     * 해당 유저 쪽 상태만 CLOSED로 변경하며, findAllVisibleByUserId가 한쪽만 CLOSED여도
-     * 목록에서 제외하므로 상대방 화면에서도 더 이상 노출되지 않습니다.
-     * 단, 이미 최종 확정(FINAL_CONFIRMED)된 매칭은 건드리지 않습니다.
-     * 확정 관계를 유지해 남은 상대방이 연락처 조회 불가 + 재매칭 불가로 고착되는 것을 방지합니다.
-     */
+    // 정지 등의 사유로 사용자의 진행 중인 MatchRequest를 CLOSED 처리
+    // 사용자와 관련된 채팅방도 함께 종료
+    // 단, 양쪽 모두 최종 확정된 MatchRequest는 제외
     @Transactional
     public void closeAllMatchRequestsByUserId(Long userId){
         chatService.closeChatRoomsByUserId(userId);
-
-        List<MatchRequests> myMatchRequests = matchRepository.findAllByUserId(userId);
-
-        for(MatchRequests matchRequest : myMatchRequests){
-            if(matchRequest.isConfirmed()){
-                continue;
-            }
-            if(matchRequest.getStatusOf(userId) != MatchStatus.CLOSED){
-                matchRequest.updateStatusOf(userId, MatchStatus.CLOSED);
-            }
-        }
+        matchRepository.closeUnconfirmedMatchRequestsForUser(userId);
     }
 
 
