@@ -98,4 +98,26 @@ public class RecruitmentParticipationService {
     }
 
 
+    @Transactional
+    public void leaveRecruitment(
+            Long userId,
+            Long recruitmentId
+    ){
+
+
+    }
+
+
+    @Transactional(readOnly = true)
+    public void getMyParticipation(
+            Long userId
+    ){}
+
+
+    @Transactional
+    public void removeParticipant(
+            Long userId,
+            Long targetParticipant
+    ){}
+
 }

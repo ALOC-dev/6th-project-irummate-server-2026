@@ -1,5 +1,7 @@
 package com.irummate.domain.recruitment.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Future;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
@@ -17,6 +19,8 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class RecruitmentUpdateRequestDto {
+
+    // 모든 필드는 선택값이며, 생략하거나 null로 전달하면 기존 값을 유지합니다.
 
     // 게시글 제목
     @Size(max = 255, message = "제목은 255자 이하여야 합니다.")
@@ -39,11 +43,19 @@ public class RecruitmentUpdateRequestDto {
     @Future(message = "모집 마감 일시는 현재 시각 이후여야 합니다.")
     private LocalDateTime deadlineAt;
 
-    // 작성자를 포함한 최대 인원
-    @Min(value = 2, message = "최대 모집 인원은 2명 이상이어야 합니다.")
+    // 작성자를 제외하고 모집할 인원
+    @Min(value = 1, message = "작성자를 제외한 모집 인원은 1명 이상이어야 합니다.")
     private Integer maxParticipants;
 
     // 예상 비용
     @PositiveOrZero(message = "예상 비용은 0원 이상이어야 합니다.")
     private Integer estimatedFee;
+
+    @JsonIgnore
+    @AssertTrue(message = "수정할 항목을 하나 이상 전달해야 합니다.")
+    public boolean isUpdateRequested() {
+        return title != null || content != null || place != null
+                || activityAt != null || deadlineAt != null
+                || maxParticipants != null || estimatedFee != null;
+    }
 }

@@ -47,9 +47,9 @@ public class RecruitmentCreateRequestDto {
     @Future(message = "모집 마감 일시는 현재 시각 이후여야 합니다.")
     private LocalDateTime deadlineAt;
 
-    // 작성자를 포함한 최대 인원
+    // 작성자를 제외하고 모집할 인원
     @NotNull(message = "최대 모집 인원은 필수입니다.")
-    @Min(value = 2, message = "최대 모집 인원은 2명 이상이어야 합니다.")
+    @Min(value = 1, message = "작성자를 제외한 모집 인원은 1명 이상이어야 합니다.")
     private Integer maxParticipants;
 
     // 예상 비용

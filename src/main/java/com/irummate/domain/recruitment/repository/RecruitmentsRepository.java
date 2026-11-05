@@ -1,6 +1,8 @@
 package com.irummate.domain.recruitment.repository;
 
+import com.irummate.domain.recruitment.entity.RecruitmentParticipantStatus;
 import com.irummate.domain.recruitment.entity.RecruitmentStatus;
+import com.irummate.domain.recruitment.entity.RecruitmentVisibility;
 import com.irummate.domain.recruitment.entity.Recruitments;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
@@ -40,4 +42,42 @@ public interface RecruitmentsRepository extends JpaRepository<Recruitments, Long
     Optional<Recruitments> findByIdForUpdate(
             @Param("recruitmentId") Long recruitmentId
     );
+
+
+
+    @Query(
+            value = """
+        select r as recruitment,
+               case
+                   when a.id = :userId then 'MINE'
+                   when p.id is not null then 'JOINED'
+                   else 'NONE'
+               end as participating
+        from Recruitments r
+        join fetch r.author a
+        left join RecruitmentParticipants p
+            on p.recruitment = r
+            and p.user.id = :userId
+            and p.status = :joinedStatus
+        where r.visibility = :visibility
+        order by r.createdAt desc, r.id desc
+        """,
+            countQuery = """
+        select count(r)
+        from Recruitments r
+        where r.visibility = :visibility
+        """
+    )
+    Page<RecruitmentListRow> findRecruitmentList(
+            @Param("userId") Long userId,
+            @Param("joinedStatus") RecruitmentParticipantStatus joinedStatus,
+            @Param("visibility") RecruitmentVisibility visibility,
+            Pageable pageable
+    );
+
+
+    public interface RecruitmentListRow {
+        Recruitments getRecruitment();
+        String getParticipating();
+    }
 }

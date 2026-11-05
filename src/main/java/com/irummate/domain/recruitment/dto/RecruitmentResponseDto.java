@@ -40,7 +40,19 @@ public class RecruitmentResponseDto {
     // 작성 시각
     private final LocalDateTime createdAt;
 
-    public static RecruitmentResponseDto from(Recruitments recruitment) {
+    // 현재 로그인 사용자와 모집글의 관계
+    private final ParticipationView participating;
+
+    public enum ParticipationView {
+        MINE,
+        JOINED,
+        NONE
+    }
+
+    public static RecruitmentResponseDto from(
+            Recruitments recruitment,
+            ParticipationView participating
+    ) {
 
         boolean full = recruitment.getNowParticipants()
                 >= recruitment.getMaxParticipants();
@@ -66,6 +78,7 @@ public class RecruitmentResponseDto {
                 .nowParticipants(recruitment.getNowParticipants())
                 .maxParticipants(recruitment.getMaxParticipants())
                 .full(full)
+                .participating(participating)
 
                 .createdAt(recruitment.getCreatedAt())
                 .build();
