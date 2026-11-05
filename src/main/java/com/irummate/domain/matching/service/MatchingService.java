@@ -19,6 +19,7 @@ import com.irummate.global.exception.ErrorCode;
 import com.irummate.global.util.HashIdsUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cglib.core.Local;
 import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -216,28 +217,49 @@ public class MatchingService {
     @Transactional(readOnly = true)
     public List<MatchingResponseDto> getMatchingStatus(Long userId){
 
-        List<MatchRequests> myMatchRequests = matchRepository.findAllVisibleByUserId(userId);
+        // 조회를 위한 날짜 확인
+        // 오늘 추천받은 카드들은 상태 관계없이 조회하기 위함(탈퇴/제재 등의 사유로 인한 카드는 예외)
+        LocalDate now = LocalDate.now(ZoneId.of("Asia/Seoul"));
 
+        LocalDateTime startOfToday = now.atStartOfDay();
+        LocalDateTime startOfTomorrow = now.plusDays(1).atStartOfDay();
+
+
+        // 전체 리스트 조회
+        List<MatchRequests> myMatchRequests = matchRepository.findAllVisibleByUserId(
+                userId,
+                startOfToday,
+                startOfTomorrow
+                );
+
+
+        // 매칭 카드가 없으면 빈 리스트 전달
         if(myMatchRequests.isEmpty()){
             return List.of();
         }
 
+        // 반환 형식 변환 준비
         List<MatchingResponseDto> matchingResponseDtos = new ArrayList<>();
 
+        // 형식 변환
         for(MatchRequests matchRequest : myMatchRequests){
-            Users other = matchRequest.getUserHigh().getId().equals(userId)
-                    ? matchRequest.getUserLow()
-                    : matchRequest.getUserHigh();
 
-            Users me = matchRequest.getUserLow().getId().equals(userId)
-                    ? matchRequest.getUserLow()
-                    : matchRequest.getUserHigh();
+            // high, low로 id가 구분되어 저장된 matchRequest에서
+            // 사용자와 상대방 구분
+            boolean isLowUser = matchRequest.getUserLow().getId().equals(userId);
+            Users me = isLowUser ? matchRequest.getUserLow() : matchRequest.getUserHigh();
+            Users other = isLowUser ? matchRequest.getUserHigh() : matchRequest.getUserLow();
 
+            // 사용자와 상대방의 매칭 상태 조회
+            MatchStatus myStatus = matchRequest.getStatusOf(userId);
+            MatchStatus otherStatus = matchRequest.getStatusOf(other.getId());
 
+            // user가 추천받은 시각 조회
             LocalDateTime recommendedAt = matchRequest.getUserLow().getId().equals(userId)
                     ? matchRequest.getUserLowRecommendedAt()
                     : matchRequest.getUserHighRecommendedAt();
 
+            // dto 형식에 맞게 전환
             MatchingResponseDto matchingResponseDto = MatchingResponseDto.builder()
                     .userId(hashIdsUtils.encode(other.getId()))
                     .name(other.getNickname())
@@ -247,9 +269,7 @@ public class MatchingService {
                     .imageUrl(other.getProfileImageUrl())
                     .department(other.getUserDetails().getDepartment())
                     .matchPercentage(matchRequest.getMatchPercentage())
-                    .matchStatus(matchRequest.getUserLow().equals(other)
-                            ?toCardStatus(matchRequest.getUserHighStatus(),matchRequest.getUserLowStatus())
-                            :toCardStatus(matchRequest.getUserLowStatus(),matchRequest.getUserHighStatus()))
+                    .matchStatus(toCardStatus(myStatus, otherStatus))
                     .smokingStatus(other.getUserPreferences().getSmokingStatus())
                     .preferredAnswers(me.getUserPreferences().getVisibleProfileFields().stream()
                             .distinct()

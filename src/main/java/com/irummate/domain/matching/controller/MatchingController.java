@@ -44,7 +44,8 @@ public class MatchingController {
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "매칭 카드 목록 조회 성공"),
             @ApiResponse(responseCode = "401", description = "인증이 필요합니다."),
-            @ApiResponse(responseCode = "403", description = "인증 또는 설문 작성이 완료되지 않았습니다.")
+            @ApiResponse(responseCode = "403", description = "접근 권한이 없거나, 설문 작성 또는 이번 학기 기숙사 인증이 완료되지 않았거나, 매칭 기간이 아닙니다."),
+            @ApiResponse(responseCode = "404", description = "사용자를 찾을 수 없거나 매칭 일정이 설정되어 있지 않습니다.")
     })
     @RequiresAuth(roles = AuthRole.USER)
     @RequiresMatchDate
@@ -70,9 +71,9 @@ public class MatchingController {
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "오늘의 매칭 추천 성공"),
             @ApiResponse(responseCode = "401", description = "인증이 필요합니다."),
-            @ApiResponse(responseCode = "403", description = "인증 또는 설문 작성이 완료되지 않았습니다."),
-            @ApiResponse(responseCode = "404", description = "유저 또는 설문 정보를 찾을 수 없습니다."),
-            @ApiResponse(responseCode = "409", description = "이미 최종 매칭되었거나 오늘 이미 매칭 추천을 완료했습니다.")
+            @ApiResponse(responseCode = "403", description = "접근 권한이 없거나, 설문 작성 또는 이번 학기 기숙사 인증이 완료되지 않았거나, 매칭 기간이 아닙니다."),
+            @ApiResponse(responseCode = "404", description = "사용자 또는 설문 정보를 찾을 수 없거나, 매칭 일정이 설정되지 않았거나, 추천 가능한 상대가 없습니다."),
+            @ApiResponse(responseCode = "409", description = "이미 최종 매칭되었거나, 오늘 이미 추천을 완료했거나, 다른 매칭 추천 요청을 처리 중입니다.")
     })
     @RequiresAuth(roles = AuthRole.USER)
     @RequiresSurvey
@@ -89,10 +90,10 @@ public class MatchingController {
 
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "하트 전달 또는 거절 처리 성공"),
-            @ApiResponse(responseCode = "400", description = "요청 값이 올바르지 않습니다. matchStatus는 HEART 또는 REJECT만 가능합니다."),
+            @ApiResponse(responseCode = "400", description = "필수 입력값이나 상대방 식별자가 유효하지 않습니다. 요청 상태는 하트 전달(HEART) 또는 거절(REJECT)만 가능합니다."),
             @ApiResponse(responseCode = "401", description = "인증이 필요합니다."),
-            @ApiResponse(responseCode = "403", description = "인증 또는 설문 작성이 완료되지 않았습니다."),
-            @ApiResponse(responseCode = "404", description = "매칭 요청을 찾을 수 없습니다."),
+            @ApiResponse(responseCode = "403", description = "접근 권한이 없거나, 설문 작성 또는 이번 학기 기숙사 인증이 완료되지 않았거나, 매칭 기간이 아닙니다."),
+            @ApiResponse(responseCode = "404", description = "사용자 또는 매칭 요청을 찾을 수 없거나 매칭 일정이 설정되어 있지 않습니다."),
             @ApiResponse(responseCode = "409", description = "현재 매칭 상태에서는 하트 전달 또는 거절을 할 수 없습니다.")
     })
     @RequiresAuth(roles = AuthRole.USER)
@@ -120,12 +121,12 @@ public class MatchingController {
     }
 
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "최종 매칭 확정 성공"),
-            @ApiResponse(responseCode = "400", description = "요청 값이 올바르지 않습니다."),
+            @ApiResponse(responseCode = "200", description = "최종 매칭 확정 의사 전달 성공. 양쪽 모두 확정하면 최종 매칭이 완료됩니다."),
+            @ApiResponse(responseCode = "400", description = "필수 입력값이나 상대방 식별자가 유효하지 않거나 자기 자신에게 확정을 요청했습니다."),
             @ApiResponse(responseCode = "401", description = "인증이 필요합니다."),
-            @ApiResponse(responseCode = "403", description = "인증 또는 설문 작성이 완료되지 않았습니다."),
-            @ApiResponse(responseCode = "404", description = "매칭 요청을 찾을 수 없습니다."),
-            @ApiResponse(responseCode = "409", description = "현재 매칭 상태에서는 최종 확정을 할 수 없습니다.")
+            @ApiResponse(responseCode = "403", description = "접근 권한이 없거나 설문 작성 또는 이번 학기 기숙사 인증이 완료되지 않았습니다."),
+            @ApiResponse(responseCode = "404", description = "사용자, 설문 정보 또는 매칭 요청을 찾을 수 없습니다."),
+            @ApiResponse(responseCode = "409", description = "이미 최종 매칭된 사용자가 있거나 현재 상태에서 확정할 수 없습니다.")
     })
     @RequiresAuth(roles = AuthRole.USER)
     @RequiresSurvey
@@ -142,6 +143,13 @@ public class MatchingController {
     @RequiresAuth(roles = AuthRole.USER)
     @RequiresSurvey
     @RequiresCertification
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "최종 확정 상대의 연락처 조회 성공"),
+            @ApiResponse(responseCode = "400", description = "상대방 식별자가 유효하지 않거나 자기 자신의 연락처를 요청했습니다."),
+            @ApiResponse(responseCode = "401", description = "인증이 필요합니다."),
+            @ApiResponse(responseCode = "403", description = "접근 권한이 없거나, 설문 작성 또는 이번 학기 기숙사 인증이 완료되지 않았거나, 서로 최종 확정된 관계가 아니거나, 상대방의 필수 정보가 없습니다."),
+            @ApiResponse(responseCode = "404", description = "사용자 또는 매칭 요청을 찾을 수 없습니다.")
+    })
     @GetMapping("/requests/{receiverId}/contact")
     public ResponseEntity<GlobalApiResponse<?>> getConfirmedContact(
             @AuthenticationPrincipal Long userId,

@@ -275,6 +275,8 @@ public interface MatchRepository extends JpaRepository<MatchRequests, Long> {
     // 자기 자신이 포함된 match를 조회
     // 단, 내가 아직 추천받지 않았거나(NONE) 내가 거절한(REJECTED) match는 조회 대상에서 제외
     // (상대방이 거절한 것은 포함)
+    // 현재 노출 가능한 MatchRequest와
+    // 오늘 사용자에게 추천됐던 모든 MatchRequest를 조회
     @Query("""
     SELECT DISTINCT mr
     FROM MatchRequests mr
@@ -288,16 +290,24 @@ public interface MatchRepository extends JpaRepository<MatchRequests, Long> {
         mr.userLow.id = :userId
         AND mr.userHigh.status = com.irummate.domain.user.entity.UserStatus.ACTIVE
         AND mr.userHigh.role = com.irummate.domain.user.entity.UserRole.USER
-        AND mr.userLowStatus <> com.irummate.domain.matching.entity.MatchStatus.CLOSED
-        AND mr.userHighStatus <> com.irummate.domain.matching.entity.MatchStatus.CLOSED
         AND (
-            mr.userLowStatus NOT IN (
-                com.irummate.domain.matching.entity.MatchStatus.NONE,
-                com.irummate.domain.matching.entity.MatchStatus.REJECTED
+            (
+                mr.userLowStatus <> com.irummate.domain.matching.entity.MatchStatus.CLOSED
+                AND mr.userHighStatus <> com.irummate.domain.matching.entity.MatchStatus.CLOSED
+                AND (
+                    mr.userLowStatus NOT IN (
+                        com.irummate.domain.matching.entity.MatchStatus.NONE,
+                        com.irummate.domain.matching.entity.MatchStatus.REJECTED
+                    )
+                    OR (
+                        mr.userLowStatus = com.irummate.domain.matching.entity.MatchStatus.NONE
+                        AND mr.userHighStatus = com.irummate.domain.matching.entity.MatchStatus.HEART
+                    )
+                )
             )
             OR (
-                mr.userLowStatus = com.irummate.domain.matching.entity.MatchStatus.NONE
-                AND mr.userHighStatus = com.irummate.domain.matching.entity.MatchStatus.HEART
+                mr.userLowRecommendedAt >= :startOfToday
+                AND mr.userLowRecommendedAt < :startOfTomorrow
             )
         )
     )
@@ -305,22 +315,34 @@ public interface MatchRepository extends JpaRepository<MatchRequests, Long> {
         mr.userHigh.id = :userId
         AND mr.userLow.status = com.irummate.domain.user.entity.UserStatus.ACTIVE
         AND mr.userLow.role = com.irummate.domain.user.entity.UserRole.USER
-        AND mr.userLowStatus <> com.irummate.domain.matching.entity.MatchStatus.CLOSED
-        AND mr.userHighStatus <> com.irummate.domain.matching.entity.MatchStatus.CLOSED
         AND (
-            mr.userHighStatus NOT IN (
-                com.irummate.domain.matching.entity.MatchStatus.NONE,
-                com.irummate.domain.matching.entity.MatchStatus.REJECTED
+            (
+                mr.userLowStatus <> com.irummate.domain.matching.entity.MatchStatus.CLOSED
+                AND mr.userHighStatus <> com.irummate.domain.matching.entity.MatchStatus.CLOSED
+                AND (
+                    mr.userHighStatus NOT IN (
+                        com.irummate.domain.matching.entity.MatchStatus.NONE,
+                        com.irummate.domain.matching.entity.MatchStatus.REJECTED
+                    )
+                    OR (
+                        mr.userHighStatus = com.irummate.domain.matching.entity.MatchStatus.NONE
+                        AND mr.userLowStatus = com.irummate.domain.matching.entity.MatchStatus.HEART
+                    )
+                )
             )
             OR (
-                mr.userHighStatus = com.irummate.domain.matching.entity.MatchStatus.NONE
-                AND mr.userLowStatus = com.irummate.domain.matching.entity.MatchStatus.HEART
+                mr.userHighRecommendedAt >= :startOfToday
+                AND mr.userHighRecommendedAt < :startOfTomorrow
             )
         )
     )
     ORDER BY mr.matchPercentage DESC
     """)
-    List<MatchRequests> findAllVisibleByUserId(@Param("userId") Long userId);
+    List<MatchRequests> findAllVisibleByUserId(
+            @Param("userId") Long userId,
+            @Param("startOfToday") LocalDateTime startOfToday,
+            @Param("startOfTomorrow") LocalDateTime startOfTomorrow
+    );
 
 
     // 최종 매칭 확정 시 해당 사용자의 다른 매칭들을 종료하는 쿼리
