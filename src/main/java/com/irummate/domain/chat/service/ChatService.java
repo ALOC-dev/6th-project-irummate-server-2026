@@ -140,7 +140,7 @@ public class ChatService {
 
         List<ChatMessage> messages = cursor == null
                 ? chatMessageRepository.findByRoom_IdOrderByIdDesc(roomId, pageRequest)
-                : chatMessageRepository.findByRoomIdAndIdLessThanOrderByIdDesc(roomId, cursor, pageRequest);
+                : chatMessageRepository.findByRoom_IdAndIdLessThanOrderByIdDesc(roomId, cursor, pageRequest);
 
         boolean hasNext = messages.size() > size;
 
@@ -199,7 +199,7 @@ public class ChatService {
             ChatMessageResponseDto messageDto
     ) {
         Users sender = getUser(senderId);
-        int unreadCount = chatMessageRepository.countByRoomIdAndSenderIdNotAndIsReadFalse(roomId, receiverId);
+        int unreadCount = chatMessageRepository.countByRoom_IdAndSender_IdNotAndIsReadFalse(roomId, receiverId);
         int totalUnreadCount = getTotalUnreadCountValue(receiverId);
 
         return new ChatNotificationDto(
@@ -240,14 +240,14 @@ public class ChatService {
     @Transactional
     public ChatRoom createChatRoomIfNotExists(Long matchRequestId) {
         // 상호 HEART 상태가 되었을 때 matchRequestId 기준으로 채팅방을 한 번만 생성한다.
-        return chatRoomRepository.findByMatchRequestId(matchRequestId)
+        return chatRoomRepository.findByMatchRequest_Id(matchRequestId)
                 .orElseGet(() -> saveChatRoomOrFindExisting(matchRequestId));
     }
 
     @Transactional
     public void closeChatRoomByMatchRequestId(Long matchRequestId) {
         // 최종 매칭이 확정되면 기존 대화는 조회만 가능하도록 채팅방을 닫는다.
-        chatRoomRepository.findByMatchRequestId(matchRequestId)
+        chatRoomRepository.findByMatchRequest_Id(matchRequestId)
                 .ifPresent(ChatRoom::close);
     }
 
@@ -326,7 +326,7 @@ public class ChatService {
                             .build()
             );
         } catch (DataIntegrityViolationException e) {
-            return chatRoomRepository.findByMatchRequestId(matchRequestId)
+            return chatRoomRepository.findByMatchRequest_Id(matchRequestId)
                     .orElseThrow(() -> e);
         }
     }

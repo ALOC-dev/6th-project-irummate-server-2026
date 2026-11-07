@@ -49,7 +49,7 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
     );
 
     // 매칭 요청 하나에 채팅방이 하나만 생성되도록 확인할 때 사용한다.
-    Optional<ChatRoom> findByMatchRequestId(Long matchRequestId);
+    Optional<ChatRoom> findByMatchRequest_Id(Long matchRequestId);
 
     // 채팅방 목록에 필요한 상대방 정보를 매칭 요청과 유저 정보에서 한 번에 조회한다.
     @Query("""
