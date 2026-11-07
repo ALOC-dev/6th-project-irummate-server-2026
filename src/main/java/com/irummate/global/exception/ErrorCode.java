@@ -11,6 +11,7 @@ public enum ErrorCode {
     // ── 400 ──
     BAD_REQUEST(HttpStatus.BAD_REQUEST, "잘못된 요청입니다."),
     INVALID_INPUT(HttpStatus.BAD_REQUEST, "입력값이 유효하지 않습니다."),
+    SELF_BLOCK_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "자기 자신을 차단할 수 없습니다."),
     BIO_TOO_LONG(HttpStatus.BAD_REQUEST, "자기소개는 100자를 초과할 수 없습니다."),
     INVALID_IMAGE_FORMAT(HttpStatus.BAD_REQUEST, "JPG/PNG 형식의 이미지만 업로드 가능합니다."),
     IMAGE_SIZE_EXCEEDED(HttpStatus.BAD_REQUEST, "이미지는 5MB를 초과할 수 없습니다."),
@@ -28,6 +29,7 @@ public enum ErrorCode {
 
     // ── 403 ──
     FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
+    USER_BLOCKED(HttpStatus.FORBIDDEN, "해당 사용자와의 상호작용이 제한되어 있습니다."),
     ADMIN_ONLY(HttpStatus.FORBIDDEN, "관리자 권한이 필요합니다."),
     ACCOUNT_BANNED(HttpStatus.FORBIDDEN, "정지된 계정입니다."),
     ACCOUNT_WITHDRAWN(HttpStatus.FORBIDDEN, "탈퇴한 계정입니다."),
