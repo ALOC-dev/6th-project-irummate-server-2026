@@ -1,6 +1,8 @@
 package com.irummate.global;
 
 import com.irummate.domain.chat.repository.ChatRoomRepository;
+import com.irummate.domain.user.entity.UserStatus;
+import com.irummate.domain.user.entity.Users;
 import com.irummate.domain.user.repository.UsersRepository;
 import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
@@ -16,6 +18,8 @@ import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.test.util.ReflectionTestUtils;
+
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -49,6 +53,7 @@ class WebSocketConfigTest {
 
     @Test
     void rejectsRoomSubscriptionByNonParticipant() {
+        givenActiveUser(2L);
         when(chatRoomRepository.existsById(7L)).thenReturn(true);
         when(chatRoomRepository.existsByRoomIdAndParticipantId(7L, 2L)).thenReturn(false);
         Message<byte[]> message = stompMessage(
@@ -65,6 +70,7 @@ class WebSocketConfigTest {
 
     @Test
     void rejectsInvalidSubscriptionDestination() {
+        givenActiveUser(2L);
         Message<byte[]> message = stompMessage(
                 StompCommand.SUBSCRIBE,
                 "/topic/unknown/7",
@@ -79,6 +85,7 @@ class WebSocketConfigTest {
 
     @Test
     void allowsOnlyExactChatErrorUserDestination() {
+        givenActiveUser(2L);
         Message<byte[]> allowed = stompMessage(
                 StompCommand.SUBSCRIBE,
                 "/user/queue/chat-errors",
@@ -97,6 +104,12 @@ class WebSocketConfigTest {
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode())
                                 .isEqualTo(ErrorCode.INVALID_WEBSOCKET_DESTINATION));
+    }
+
+    private void givenActiveUser(Long userId) {
+        Users user = mock(Users.class);
+        when(user.getStatus()).thenReturn(UserStatus.ACTIVE);
+        when(usersRepository.findById(userId)).thenReturn(Optional.of(user));
     }
 
     private Message<byte[]> stompMessage(StompCommand command, String destination, WebSocketPrincipal principal) {

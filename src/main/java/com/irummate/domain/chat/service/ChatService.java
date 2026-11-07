@@ -17,7 +17,9 @@ import com.irummate.domain.chat.entity.ChatRoom;
 import com.irummate.domain.chat.entity.ChatRoomStatus;
 import com.irummate.domain.chat.repository.ChatMessageRepository;
 import com.irummate.domain.chat.repository.ChatRoomRepository;
+import com.irummate.domain.matching.entity.MatchRequests;
 import com.irummate.domain.matching.entity.MatchStatus;
+import com.irummate.domain.matching.repository.MatchRepository;
 import com.irummate.domain.user.entity.UserStatus;
 import com.irummate.domain.user.entity.Users;
 import com.irummate.domain.user.repository.UsersRepository;
@@ -47,15 +49,17 @@ public class ChatService {
     private final ChatMessageRepository chatMessageRepository;
     private final UsersRepository usersRepository;
     private final HashIdsUtils hashIdsUtils;
+    private final MatchRepository matchRepository;
 
     public ChatService(ChatRoomRepository chatRoomRepository,
                        ChatMessageRepository chatMessageRepository,
                        UsersRepository usersRepository,
-                       HashIdsUtils hashIdsUtils) {
+                       HashIdsUtils hashIdsUtils, MatchRepository matchRepository) {
         this.chatRoomRepository = chatRoomRepository;
         this.chatMessageRepository = chatMessageRepository;
         this.usersRepository = usersRepository;
         this.hashIdsUtils = hashIdsUtils;
+        this.matchRepository = matchRepository;
     }
 
     @Transactional(readOnly = true)
@@ -135,8 +139,8 @@ public class ChatService {
         PageRequest pageRequest = PageRequest.of(0, size + 1);
 
         List<ChatMessage> messages = cursor == null
-                ? chatMessageRepository.findByRoomIdOrderByIdDesc(roomId, pageRequest)
-                : chatMessageRepository.findByRoomIdAndIdLessThanOrderByIdDesc(roomId, cursor, pageRequest);
+                ? chatMessageRepository.findByRoom_IdOrderByIdDesc(roomId, pageRequest)
+                : chatMessageRepository.findByRoom_IdAndIdLessThanOrderByIdDesc(roomId, cursor, pageRequest);
 
         boolean hasNext = messages.size() > size;
 
@@ -144,7 +148,7 @@ public class ChatService {
                 .limit(size)
                 .map(chatMessage -> ChatMessageResponseDto.from(
                         chatMessage,
-                        hashIdsUtils.encode(chatMessage.getSenderId())
+                        hashIdsUtils.encode(chatMessage.getSender().getId())
                 ))
                 .toList();
 
@@ -195,7 +199,7 @@ public class ChatService {
             ChatMessageResponseDto messageDto
     ) {
         Users sender = getUser(senderId);
-        int unreadCount = chatMessageRepository.countByRoomIdAndSenderIdNotAndIsReadFalse(roomId, receiverId);
+        int unreadCount = chatMessageRepository.countByRoom_IdAndSender_IdNotAndIsReadFalse(roomId, receiverId);
         int totalUnreadCount = getTotalUnreadCountValue(receiverId);
 
         return new ChatNotificationDto(
@@ -214,11 +218,12 @@ public class ChatService {
     public ChatMessageResponseDto sendMessage(Long roomId, Long senderId, String message) {
         validateSendRequest(roomId, senderId, message);
         ChatRoom chatRoom = getChatRoom(roomId);
-        validateActiveUser(senderId);
+        Users sender = getUser(senderId);
+        validateActiveUser(sender);
         validateSendable(chatRoom);
         validateRoomParticipant(roomId, senderId);
 
-        ChatMessage chatMessage = ChatMessage.create(roomId, senderId, message.trim());
+        ChatMessage chatMessage = ChatMessage.create(chatRoom, sender, message.trim());
         ChatMessage savedMessage = chatMessageRepository.save(chatMessage);
 
         return ChatMessageResponseDto.from(savedMessage, hashIdsUtils.encode(senderId));
@@ -235,14 +240,14 @@ public class ChatService {
     @Transactional
     public ChatRoom createChatRoomIfNotExists(Long matchRequestId) {
         // 상호 HEART 상태가 되었을 때 matchRequestId 기준으로 채팅방을 한 번만 생성한다.
-        return chatRoomRepository.findByMatchRequestId(matchRequestId)
+        return chatRoomRepository.findByMatchRequest_Id(matchRequestId)
                 .orElseGet(() -> saveChatRoomOrFindExisting(matchRequestId));
     }
 
     @Transactional
     public void closeChatRoomByMatchRequestId(Long matchRequestId) {
         // 최종 매칭이 확정되면 기존 대화는 조회만 가능하도록 채팅방을 닫는다.
-        chatRoomRepository.findByMatchRequestId(matchRequestId)
+        chatRoomRepository.findByMatchRequest_Id(matchRequestId)
                 .ifPresent(ChatRoom::close);
     }
 
@@ -258,7 +263,7 @@ public class ChatService {
         List<ChatRoom> chatRooms = chatRoomRepository.findAllByParticipantId(userId);
 
         chatRooms.stream()
-                .filter(chatRoom -> !chatRoom.getMatchRequestId().equals(excludedMatchRequestId))
+                .filter(chatRoom -> !chatRoom.getMatchRequest().getId().equals(excludedMatchRequestId))
                 .forEach(ChatRoom::close);
     }
 
@@ -311,22 +316,22 @@ public class ChatService {
     }
 
     private ChatRoom saveChatRoomOrFindExisting(Long matchRequestId) {
+        MatchRequests matchRequest = matchRepository.getReferenceById(matchRequestId);
+
         try {
             return chatRoomRepository.saveAndFlush(
                     ChatRoom.builder()
-                            .matchRequestId(matchRequestId)
+                            .matchRequest(matchRequest)
                             .status(ChatRoomStatus.OPEN)
                             .build()
             );
         } catch (DataIntegrityViolationException e) {
-            return chatRoomRepository.findByMatchRequestId(matchRequestId)
+            return chatRoomRepository.findByMatchRequest_Id(matchRequestId)
                     .orElseThrow(() -> e);
         }
     }
 
-    private void validateActiveUser(Long userId) {
-        Users user = getUser(userId);
-
+    private void validateActiveUser(Users user) {
         if (user.getStatus() != UserStatus.ACTIVE) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
