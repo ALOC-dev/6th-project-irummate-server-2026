@@ -3,6 +3,9 @@ package com.irummate.global.exception;
 
 import com.irummate.global.response.GlobalApiResponse;
 import lombok.extern.slf4j.Slf4j;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -19,6 +22,17 @@ import java.util.List;
 public class GlobalExceptionController {
 
     // 요청 관리 Handler
+    // 기존 API 오류 정책은 유지하고 공지 API의 JSON/쿼리 형식 오류만 400으로 처리한다.
+    @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class})
+    public ResponseEntity<GlobalApiResponse<?>> handleNoticeInputFormat(Exception e, HttpServletRequest request) {
+        String path = request.getRequestURI().substring(request.getContextPath().length());
+        if (!"/api/notices".equals(path) && !"/internal/notices".equals(path)) {
+            return handleException(e);
+        }
+        return ResponseEntity.badRequest().body(GlobalApiResponse.error(
+                HttpStatus.BAD_REQUEST, "요청 값이나 형식이 올바르지 않습니다.", null));
+    }
+
     @ExceptionHandler({
             CannotCreateTransactionException.class,
             DataAccessResourceFailureException.class

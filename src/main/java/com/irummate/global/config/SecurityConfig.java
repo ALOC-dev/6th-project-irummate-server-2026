@@ -1,7 +1,14 @@
 package com.irummate.global.config;
 
 import com.irummate.global.jwt.JwtAuthenticationFilter;
+import com.irummate.global.security.NoticeIngestKeyFilter;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.core.annotation.Order;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpMethod;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -45,7 +52,23 @@ public class SecurityConfig {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
     }
 
+    // 수집 경로만 API 키로 인증하고 일반 JWT 체인과 분리한다.
     @Bean
+    @Order(1)
+    public SecurityFilterChain noticeIngestSecurityFilterChain(HttpSecurity http,
+            @Value("${notice.ingest-key:}") String key, ObjectMapper objectMapper) throws Exception {
+        return http.securityMatcher("/internal/notices")
+                .csrf(csrf -> csrf.disable())
+                .formLogin(form -> form.disable())
+                .httpBasic(basic -> basic.disable())
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .addFilterBefore(new NoticeIngestKeyFilter(key, objectMapper), UsernamePasswordAuthenticationFilter.class)
+                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+                .build();
+    }
+
+    @Bean
+    @Order(2)
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
 
@@ -66,6 +89,7 @@ public class SecurityConfig {
 
                 // API별 통행 지정
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.GET, "/api/notices").permitAll()
                         // 아래에 적힌 주소들은 로그인 없이 누구나 '무사 통과(permitAll)'할 수 있도록 열어둠
                         .requestMatchers(
                                 "/api/auth/kakao/**", // 카카오 로그인 관련 주소들
@@ -89,5 +113,13 @@ public class SecurityConfig {
                         .anyRequest().authenticated()
                 );
         return http.build();
+    }
+
+    // JWT 필터는 SecurityFilterChain에서만 실행해 수집 API와 충돌하지 않게 한다.
+    @Bean
+    public FilterRegistrationBean<JwtAuthenticationFilter> jwtFilterRegistration(JwtAuthenticationFilter filter) {
+        FilterRegistrationBean<JwtAuthenticationFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
     }
 }
