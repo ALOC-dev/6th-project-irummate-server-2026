@@ -50,6 +50,7 @@ public class RecruitmentParticipationService {
                 .existsByRecruitment_IdAndUser_Id(recruitmentId, userId);
 
         // 참여한 적이 있으면 예외처리
+        // 나갔거나 참여 중이면 재참여/입장 거절
         if(participatedBefore){
             throw new BusinessException(ErrorCode.RECRUITMENT_ALREADY_PARTICIPATED);
         }
@@ -103,6 +104,7 @@ public class RecruitmentParticipationService {
             Long userId,
             Long recruitmentId
     ){
+
 
 
     }

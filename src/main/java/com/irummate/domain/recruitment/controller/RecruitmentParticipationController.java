@@ -52,7 +52,9 @@ public class RecruitmentParticipationController {
     public void leaveRecruitment(
             @AuthenticationPrincipal Long userId,
             @PathVariable Long recruitmentId
-    ) {}
+    ) {
+
+    }
 
 
     // 참여자 목록 조회(익명)
