@@ -1,5 +1,6 @@
 package com.irummate.domain.chat.entity;
 
+import com.irummate.domain.user.entity.Users;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -18,11 +19,13 @@ public class ChatMessage {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "room_id", nullable = false)
-    private Long roomId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "room_id", nullable = false)
+    private ChatRoom room;
 
-    @Column(name = "sender_id", nullable = false)
-    private Long senderId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "sender_id", nullable = false)
+    private Users sender;
 
     @Column(nullable = false, length = 500)
     private String message;
@@ -33,15 +36,15 @@ public class ChatMessage {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    private ChatMessage(Long roomId, Long senderId, String message) {
-        this.roomId = roomId;
-        this.senderId = senderId;
+    private ChatMessage(ChatRoom room, Users sender, String message) {
+        this.room = room;
+        this.sender = sender;
         this.message = message;
         this.isRead = false;
     }
 
-    public static ChatMessage create(Long roomId, Long senderId, String message) {
-        return new ChatMessage(roomId, senderId, message);
+    public static ChatMessage create(ChatRoom room, Users sender, String message) {
+        return new ChatMessage(room, sender, message);
     }
 
     @PrePersist

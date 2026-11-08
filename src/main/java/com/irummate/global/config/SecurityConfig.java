@@ -2,7 +2,7 @@ package com.irummate.global.config;
 
 import com.irummate.global.jwt.JwtAuthenticationFilter;
 import com.irummate.global.security.NoticeIngestKeyFilter;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.core.annotation.Order;
@@ -56,7 +56,7 @@ public class SecurityConfig {
     @Bean
     @Order(1)
     public SecurityFilterChain noticeIngestSecurityFilterChain(HttpSecurity http,
-            @Value("${notice.ingest-key:}") String key, ObjectMapper objectMapper) throws Exception {
+            @Value("${notice.ingest-key:}") String key, JsonMapper objectMapper) throws Exception {
         return http.securityMatcher("/internal/notices")
                 .csrf(csrf -> csrf.disable())
                 .formLogin(form -> form.disable())

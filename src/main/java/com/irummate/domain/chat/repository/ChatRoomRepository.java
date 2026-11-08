@@ -16,7 +16,7 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
     @Query("""
             SELECT COUNT(cr)
             FROM ChatRoom cr
-            JOIN MatchRequests mr ON mr.id = cr.matchRequestId
+            JOIN cr.matchRequest mr
             WHERE mr.userLow.role = com.irummate.domain.user.entity.UserRole.USER
               AND mr.userLow.status = com.irummate.domain.user.entity.UserStatus.ACTIVE
               AND mr.userHigh.role = com.irummate.domain.user.entity.UserRole.USER
@@ -27,7 +27,7 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
     @Query("""
             SELECT COUNT(cr)
             FROM ChatRoom cr
-            JOIN MatchRequests mr ON mr.id = cr.matchRequestId
+            JOIN cr.matchRequest mr
             WHERE cr.status = :status
               AND mr.userLow.role = com.irummate.domain.user.entity.UserRole.USER
               AND mr.userLow.status = com.irummate.domain.user.entity.UserStatus.ACTIVE
@@ -39,7 +39,7 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
     @Query("""
             SELECT COUNT(cr)
             FROM ChatRoom cr
-            JOIN MatchRequests mr ON mr.id = cr.matchRequestId
+            JOIN cr.matchRequest mr
             WHERE cr.status = :status
               AND (mr.userLow.id = :userId OR mr.userHigh.id = :userId)
             """)
@@ -49,7 +49,7 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
     );
 
     // 매칭 요청 하나에 채팅방이 하나만 생성되도록 확인할 때 사용한다.
-    Optional<ChatRoom> findByMatchRequestId(Long matchRequestId);
+    Optional<ChatRoom> findByMatchRequest_Id(Long matchRequestId);
 
     // 채팅방 목록에 필요한 상대방 정보를 매칭 요청과 유저 정보에서 한 번에 조회한다.
     @Query("""
@@ -78,7 +78,7 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
                 END
             )
             FROM ChatRoom cr
-            JOIN MatchRequests mr ON mr.id = cr.matchRequestId
+            JOIN cr.matchRequest mr
             WHERE mr.userLow.id = :userId
                OR mr.userHigh.id = :userId
             ORDER BY cr.createdAt DESC
@@ -89,7 +89,7 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
     @Query("""
             SELECT cr
             FROM ChatRoom cr
-            JOIN MatchRequests mr ON mr.id = cr.matchRequestId
+            JOIN cr.matchRequest mr
             WHERE mr.userLow.id = :userId
                OR mr.userHigh.id = :userId
             ORDER BY cr.createdAt DESC
@@ -100,7 +100,7 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
     @Query("""
             SELECT COUNT(cr) > 0
             FROM ChatRoom cr
-            JOIN MatchRequests mr ON mr.id = cr.matchRequestId
+            JOIN cr.matchRequest mr
             WHERE cr.id = :roomId
               AND (mr.userLow.id = :userId OR mr.userHigh.id = :userId)
             """)
@@ -113,7 +113,7 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
                 ELSE mr.userLow.id
             END
             FROM ChatRoom cr
-            JOIN MatchRequests mr ON mr.id = cr.matchRequestId
+            JOIN cr.matchRequest mr
             WHERE cr.id = :roomId
               AND (mr.userLow.id = :userId OR mr.userHigh.id = :userId)
             """)

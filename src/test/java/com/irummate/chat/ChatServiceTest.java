@@ -10,6 +10,8 @@ import com.irummate.domain.chat.repository.ChatMessageRepository;
 import com.irummate.domain.chat.repository.ChatRoomRepository;
 import com.irummate.domain.chat.service.ChatService;
 import com.irummate.domain.matching.entity.MatchStatus;
+import com.irummate.domain.matching.entity.MatchRequests;
+import com.irummate.domain.matching.repository.MatchRepository;
 import com.irummate.domain.user.repository.UsersRepository;
 import com.irummate.domain.user.entity.UserStatus;
 import com.irummate.domain.user.entity.Users;
@@ -44,6 +46,9 @@ class ChatServiceTest {
 
     @Mock
     private UsersRepository usersRepository;
+
+    @Mock
+    private MatchRepository matchRepository;
 
     @Mock
     private HashIdsUtils hashIdsUtils;
@@ -123,8 +128,11 @@ class ChatServiceTest {
 
     @Test
     void sendMessageRejectsClosedRoomWithChatRoomClosedError() {
+        MatchRequests matchRequest = MatchRequests.builder()
+                .id(10L)
+                .build();
         ChatRoom room = ChatRoom.builder()
-                .matchRequestId(10L)
+                .matchRequest(matchRequest)
                 .status(ChatRoomStatus.CLOSED)
                 .build();
         Users sender = org.mockito.Mockito.mock(Users.class);

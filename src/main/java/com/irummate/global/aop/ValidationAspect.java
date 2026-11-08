@@ -18,6 +18,7 @@ import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -29,6 +30,8 @@ import java.util.Arrays;
 @Slf4j
 @Aspect
 @Component
+// 인증·인가 등 기존 검증을 차단 검증(UserBlockAspect)보다 먼저 수행한다.
+@Order(100)
 public class ValidationAspect {
 
     private final UserPreferencesRepository userPreferencesRepository;

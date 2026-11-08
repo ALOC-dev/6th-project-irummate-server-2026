@@ -1,7 +1,7 @@
 package com.irummate.global.websocket;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
 import org.springframework.http.MediaType;
@@ -17,9 +17,9 @@ import java.nio.charset.StandardCharsets;
 @Component
 public class WebSocketStompErrorHandler extends StompSubProtocolErrorHandler {
 
-    private final ObjectMapper objectMapper;
+    private final JsonMapper objectMapper;
 
-    public WebSocketStompErrorHandler(ObjectMapper objectMapper) {
+    public WebSocketStompErrorHandler(JsonMapper objectMapper) {
         this.objectMapper = objectMapper;
     }
 
@@ -61,7 +61,7 @@ public class WebSocketStompErrorHandler extends StompSubProtocolErrorHandler {
     private byte[] toPayload(WebSocketErrorResponseDto response) {
         try {
             return objectMapper.writeValueAsBytes(response);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             return ("{\"errorCode\":\"INTERNAL_ERROR\",\"message\":\""
                     + ErrorCode.INTERNAL_ERROR.getMessage()
                     + "\"}").getBytes(StandardCharsets.UTF_8);
