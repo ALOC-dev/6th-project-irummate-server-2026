@@ -40,14 +40,14 @@ irummate는 학생들이 생활 습관 설문에 응답하면, 응답을 벡터�
 **언어 및 프레임워크**
 
 - Java 21
-- Spring Boot 3.5.11
+- Spring Boot 4.1.2
 - Spring Security, Spring Data JPA, Spring WebSocket(STOMP)
 - Spring AOP, Bean Validation
 
 **데이터베이스**
 
 - PostgreSQL + [pgvector](https://github.com/pgvector/pgvector) (벡터 유사도 검색)
-- Hibernate Vector, QueryDSL
+- Hibernate Vector
 
 **인증 및 보안**
 
@@ -252,6 +252,19 @@ docker compose -f docker-compose.prod.yml up -d --build
 ```
 http://localhost:8080/swagger-ui/index.html
 ```
+
+### 테스트
+
+Docker 엔진을 실행한 상태에서 전체 테스트를 실행합니다.
+
+```bash
+./gradlew test
+```
+
+통합 테스트는 Testcontainers로 `pgvector/pgvector:pg17`을 시작하고 pgvector 확장을 설치합니다.
+테스트 전용 DB에 스키마를 생성하며, 로컬 `.env`와 외부 S3는 사용하지 않습니다.
+최초 실행 시 컨테이너 이미지 다운로드가 필요합니다. Docker를 사용할 수 없으면 통합 테스트가 실패합니다.
+JSONB·9차원 벡터 저장/조회, 추천 정렬과 필터, Jackson 3 응답, 기존 JWT·Hashids 동작을 검증합니다.
 
 ---
 

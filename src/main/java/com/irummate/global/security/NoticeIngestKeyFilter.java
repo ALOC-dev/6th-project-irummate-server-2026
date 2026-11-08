@@ -1,6 +1,6 @@
 package com.irummate.global.security;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import com.irummate.global.response.GlobalApiResponse;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -18,9 +18,9 @@ import java.security.NoSuchAlgorithmException;
 public class NoticeIngestKeyFilter extends OncePerRequestFilter {
     private final byte[] expectedDigest;
     private final boolean configured;
-    private final ObjectMapper objectMapper;
+    private final JsonMapper objectMapper;
 
-    public NoticeIngestKeyFilter(String key, ObjectMapper objectMapper) {
+    public NoticeIngestKeyFilter(String key, JsonMapper objectMapper) {
         configured = !key.isBlank();
         expectedDigest = digest(key);
         this.objectMapper = objectMapper;
