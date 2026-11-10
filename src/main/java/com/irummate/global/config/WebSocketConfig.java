@@ -1,20 +1,18 @@
 package com.irummate.global.config;
 
 import com.irummate.domain.chat.repository.ChatRoomRepository;
-import com.irummate.domain.user.entity.UserStatus;
-import com.irummate.domain.user.repository.UsersRepository;
-import com.irummate.global.jwt.JwtTokenProvider;
+import com.irummate.global.security.AccessTokenAuthenticationService;
 import com.irummate.global.jwt.WebSocketPrincipal;
 import com.irummate.global.util.HashIdsUtils;
 import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
 import com.irummate.global.websocket.WebSocketStompErrorHandler;
-import io.jsonwebtoken.Claims;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
+import org.springframework.messaging.simp.SimpMessageType;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
@@ -35,20 +33,17 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private static final String CHAT_ERROR_DESTINATION = "/user/queue/chat-errors";
     private static final String CHAT_SEND_DESTINATION = "/app/chat/send";
 
-    private final JwtTokenProvider jwtTokenProvider;
+    private final AccessTokenAuthenticationService authenticationService;
     private final ChatRoomRepository chatRoomRepository;
-    private final UsersRepository usersRepository;
     private final HashIdsUtils hashIdsUtils;
     private final WebSocketStompErrorHandler stompErrorHandler;
 
-    public WebSocketConfig(JwtTokenProvider jwtTokenProvider,
+    public WebSocketConfig(AccessTokenAuthenticationService authenticationService,
                             ChatRoomRepository chatRoomRepository,
-                            UsersRepository usersRepository,
                             HashIdsUtils hashIdsUtils,
                             WebSocketStompErrorHandler stompErrorHandler) {
-        this.jwtTokenProvider = jwtTokenProvider;
+        this.authenticationService = authenticationService;
         this.chatRoomRepository = chatRoomRepository;
-        this.usersRepository = usersRepository;
         this.hashIdsUtils = hashIdsUtils;
         this.stompErrorHandler = stompErrorHandler;
     }
@@ -93,40 +88,32 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                     return message;
                 }
 
-                if (StompCommand.CONNECT.equals(accessor.getCommand())) {
+                if (StompCommand.CONNECT.equals(accessor.getCommand()) || StompCommand.STOMP.equals(accessor.getCommand())) {
                     String token = resolveToken(accessor);
 
-                    if (token == null || !jwtTokenProvider.validateAccessToken(token)) {
+                    if (token == null) {
                         throw new BusinessException(ErrorCode.WEBSOCKET_UNAUTHORIZED);
                     }
 
-                    Long userId;
                     try {
-                        Claims claims = jwtTokenProvider.parseClaims(token);
-                        userId = hashIdsUtils.decode(claims.getSubject());
-                        String sessionId = claims.get("sid", String.class);
-                        if (sessionId == null || sessionId.isBlank()) {
-                            throw new BusinessException(ErrorCode.WEBSOCKET_UNAUTHORIZED);
-                        }
-                    } catch (RuntimeException e) {
+                        var access = authenticationService.authenticate(token);
+                        accessor.setUser(new WebSocketPrincipal(access.userId(), access.sessionId(), access.expiresAt()));
+                    } catch (BusinessException e) {
                         throw new BusinessException(ErrorCode.WEBSOCKET_UNAUTHORIZED);
                     }
-
-                    if (!isActiveUser(userId)) {
-                        throw new BusinessException(ErrorCode.WEBSOCKET_UNAUTHORIZED);
-                    }
-
-                    accessor.setUser(new WebSocketPrincipal(userId));
                 }
 
                 if (StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
-                    validateActiveUser(resolveUserId(accessor.getUser()));
+                    validateConnection(accessor.getUser());
                     validateSubscribe(accessor);
                 }
 
-                if (StompCommand.SEND.equals(accessor.getCommand())) {
-                    validateActiveUser(resolveUserId(accessor.getUser()));
-                    if (!CHAT_SEND_DESTINATION.equals(accessor.getDestination())) {
+                if (SimpMessageType.MESSAGE.equals(accessor.getMessageType())) {
+                    validateConnection(accessor.getUser());
+                    // MESSAGE is a server frame, but Spring also maps it to SimpMessageType.MESSAGE.
+                    // Require a client SEND, not just a matching destination, before reaching the broker.
+                    if (!StompCommand.SEND.equals(accessor.getCommand())
+                            || !CHAT_SEND_DESTINATION.equals(accessor.getDestination())) {
                         throw new BusinessException(ErrorCode.INVALID_WEBSOCKET_DESTINATION);
                     }
                 }
@@ -136,14 +123,13 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         };
     }
 
-    private boolean isActiveUser(Long userId) {
-        return usersRepository.findById(userId)
-                .map(user -> user.getStatus() == UserStatus.ACTIVE)
-                .orElse(false);
-    }
-
-    private void validateActiveUser(Long userId) {
-        if (!isActiveUser(userId)) {
+    private void validateConnection(Principal principal) {
+        if (!(principal instanceof WebSocketPrincipal user)) {
+            throw new BusinessException(ErrorCode.WEBSOCKET_UNAUTHORIZED);
+        }
+        try {
+            authenticationService.validateSession(user.getUserId(), user.getSessionId(), user.getExpiresAt());
+        } catch (BusinessException e) {
             throw new BusinessException(ErrorCode.WEBSOCKET_UNAUTHORIZED);
         }
     }
