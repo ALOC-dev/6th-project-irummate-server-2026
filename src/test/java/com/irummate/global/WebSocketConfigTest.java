@@ -12,6 +12,9 @@ import com.irummate.global.jwt.WebSocketPrincipal;
 import com.irummate.global.util.HashIdsUtils;
 import com.irummate.global.websocket.WebSocketStompErrorHandler;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompCommand;
@@ -40,6 +43,33 @@ class WebSocketConfigTest {
             mock(WebSocketStompErrorHandler.class)
     );
     private final MessageChannel channel = mock(MessageChannel.class);
+
+    @Test
+    void allowsOnlyExactChatSendDestination() {
+        givenActiveUser(2L);
+        Message<byte[]> message = stompMessage(StompCommand.SEND, "/app/chat/send", new WebSocketPrincipal(2L));
+        assertThat(inboundInterceptor().preSend(message, channel)).isSameAs(message);
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", "/topic/room/7", "/queue/user/other", "/user/queue/chat-errors",
+            "/app/unknown", "/app/chat/send/extra", "/app/chat/sender", "/app/chat/send?x=1"})
+    void rejectsEveryOtherSendDestination(String destination) {
+        givenActiveUser(2L);
+        Message<byte[]> message = stompMessage(StompCommand.SEND, destination, new WebSocketPrincipal(2L));
+        assertThatThrownBy(() -> inboundInterceptor().preSend(message, channel))
+                .isInstanceOfSatisfying(BusinessException.class, e ->
+                        assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_WEBSOCKET_DESTINATION));
+    }
+
+    @Test
+    void rejectsUnauthenticatedSend() {
+        Message<byte[]> message = stompMessage(StompCommand.SEND, "/app/chat/send", null);
+        assertThatThrownBy(() -> inboundInterceptor().preSend(message, channel))
+                .isInstanceOfSatisfying(BusinessException.class, e ->
+                        assertThat(e.getErrorCode()).isEqualTo(ErrorCode.WEBSOCKET_UNAUTHORIZED));
+    }
 
     @Test
     void rejectsConnectWithoutValidAuthentication() {
