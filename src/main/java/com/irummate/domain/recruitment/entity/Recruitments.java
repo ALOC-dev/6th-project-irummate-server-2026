@@ -5,8 +5,6 @@ import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
 import jakarta.persistence.*;
 import lombok.*;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -52,10 +50,6 @@ public class Recruitments {
     @Enumerated(EnumType.STRING)
     private RecruitmentHiddenReason hiddenReason;
 
-    // 모집 설명과 참여 조건
-    @Column(name = "content", length = 80)
-    private String content;
-
     // 대략적인 활동 장소 혹은 만남 장소
     @Column(name = "place")
     private String place;
@@ -79,9 +73,14 @@ public class Recruitments {
     private Integer maxParticipants;
 
 
-    // 예상 비용(공동 구매 시)
-    @Column(name = "estimated_fee")
-    private Integer estimatedFee;
+    // 공동구매 금액 방식
+    @Enumerated(EnumType.STRING)
+    @Column(name = "price_type")
+    private RecruitmentPriceType priceType;
+
+    // FIXED는 1인 금액, SPLIT은 총액
+    @Column(name = "amount")
+    private Integer amount;
 
 
     // 취소 시 사유
@@ -95,13 +94,18 @@ public class Recruitments {
     @Column(name = "closed_at")
     private LocalDateTime closedAt;
 
+    // 모집 마감 사유 (수동 마감 / 정원 충족)
+    @Enumerated(EnumType.STRING)
+    @Column(name = "close_reason")
+    private RecruitmentCloseReason closeReason;
+
     // 2. 모집 취소 시각
     @Column(name = "canceled_at")
     private LocalDateTime canceledAt;
 
-    // 3. 활동 완료 시각
+    // 3. 활동 시작에 따른 게시판 종료 처리 시각 (기존 DB 컬럼명 유지)
     @Column(name = "completed_at")
-    private LocalDateTime completedAt;
+    private LocalDateTime endedAt;
 
 
 
@@ -133,12 +137,12 @@ public class Recruitments {
     // null인 항목은 유지하고, 전달된 항목만 수정합니다.
     public void update(
             String title,
-            String content,
             String place,
             LocalDateTime activityAt,
             LocalDateTime deadlineAt,
             Integer maxParticipants,
-            Integer estimatedFee,
+            RecruitmentPriceType priceType,
+            Integer amount,
             LocalDateTime now
     ) {
         if (this.visibility != RecruitmentVisibility.VISIBLE) {
@@ -164,34 +168,179 @@ public class Recruitments {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
 
-        if (title != null) this.title = title;
-        if (content != null) this.content = content;
-        if (place != null) this.place = place;
+        RecruitmentPriceType updatedPriceType = priceType != null ? priceType : this.priceType;
+        Integer updatedAmount = amount != null ? amount : this.amount;
+        validatePrice(updatedPriceType, updatedAmount);
+
+        // 생략한 항목은 유지하고, 전달된 문자열은 정리와 검증을 마친 뒤 반영
+        String updatedTitle = title != null ? normalizeTitle(title) : this.title;
+        String updatedPlace = place != null ? normalizePlace(place) : this.place;
+
+        this.title = updatedTitle;
+        this.place = updatedPlace;
         if (activityAt != null) this.activityAt = activityAt;
         if (deadlineAt != null) this.deadlineAt = deadlineAt;
         if (maxParticipants != null) this.maxParticipants = maxParticipants;
-        if (estimatedFee != null) this.estimatedFee = estimatedFee;
+        this.priceType = updatedPriceType;
+        this.amount = updatedAmount;
 
         if (this.status == RecruitmentStatus.OPEN
                 && this.nowParticipants >= this.maxParticipants) {
-            close(now);
+            close(RecruitmentCloseReason.FULL, now);
         }
+
+        // 정원 수정으로 빈자리가 생긴 경우 정원 마감만 자동 재개
+        if (maxParticipants != null) {
+            reopenIfFullAndAvailable(now);
+        }
+    }
+
+    // 생성 시 문자열 정리. DTO를 거치지 않는 호출에서도 같은 기준 적용
+    public void configureText(String title, String place) {
+        String normalizedTitle = normalizeTitle(title);
+        String normalizedPlace = normalizePlace(place);
+
+        this.title = normalizedTitle;
+        this.place = normalizedPlace;
+    }
+
+    private String normalizeTitle(String title) {
+        if (title == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+
+        String normalizedTitle = title.strip();
+        if (normalizedTitle.isBlank() || normalizedTitle.length() > 255) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+        return normalizedTitle;
+    }
+
+    private String normalizePlace(String place) {
+        if (place == null) {
+            return null;
+        }
+
+        String normalizedPlace = place.strip();
+        if (normalizedPlace.length() > 255) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+        return normalizedPlace.isEmpty() ? null : normalizedPlace;
+    }
+
+    // 생성 시 금액 검증. 일반 카테고리는 금액을 사용하지 않음
+    public void configurePrice(RecruitmentPriceType priceType, Integer amount) {
+        validatePrice(priceType, amount);
+        this.priceType = priceType;
+        this.amount = amount;
+    }
+
+    private void validatePrice(RecruitmentPriceType priceType, Integer amount) {
+        if (this.category == RecruitmentCategory.GROUP_BUY) {
+            if (priceType == null || amount == null || amount <= 0) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT);
+            }
+        } else if (priceType != null || amount != null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    public boolean isVisible() {
+        return this.visibility == RecruitmentVisibility.VISIBLE;
+    }
+
+    // 게시글 자체의 참여 불가 사유. 참여 가능하면 null 반환
+    // 실제 참여 API의 기존 검증 순서(숨김 -> 상태 -> 마감 -> 정원)를 유지
+    public ErrorCode findJoinError(LocalDateTime now) {
+        if (!isVisible()) {
+            return ErrorCode.RECRUITMENT_NOT_FOUND;
+        }
+        if (this.status != RecruitmentStatus.OPEN) {
+            return ErrorCode.RECRUITMENT_NOT_OPEN;
+        }
+        if (!this.deadlineAt.isAfter(now)) {
+            return ErrorCode.RECRUITMENT_DEADLINE_PASSED;
+        }
+        if (this.nowParticipants >= this.maxParticipants) {
+            return ErrorCode.RECRUITMENT_FULL;
+        }
+        return null;
+    }
+
+    // 조회와 예상 금액 계산에서 사용. 기존 활동 시작 시각 검사도 유지
+    public boolean canAcceptParticipant(LocalDateTime now) {
+        return findJoinError(now) == null && this.activityAt.isAfter(now);
+    }
+
+    // DB에는 기준 금액만 저장하고 예상 1인 금액은 조회 시 계산
+    // 신규 참여 가능 사용자에게만 본인 1명을 더한 예상 금액을 보여줌
+    public Integer calculateEstimatedFee(boolean canJoin, LocalDateTime now) {
+        if (this.category != RecruitmentCategory.GROUP_BUY
+                || this.priceType == null || this.amount == null) {
+            return null;
+        }
+        if (this.priceType == RecruitmentPriceType.FIXED) {
+            return this.amount;
+        }
+
+        long count = this.nowParticipants;
+        if (canJoin && canAcceptParticipant(now)) {
+            count += 1;
+        }
+        // 원 단위 올림. 실제 정산액이 아닌 예상 금액
+        return (int) ((this.amount.longValue() + count - 1) / count);
     }
 
     public void increaseParticipants(LocalDateTime now) {
         this.nowParticipants += 1;
 
         if (this.nowParticipants >= this.maxParticipants) {
-            close(now);
+            close(RecruitmentCloseReason.FULL, now);
+        }
+    }
+
+    public void decreaseParticipants(LocalDateTime now) {
+        if (this.nowParticipants <= 1) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+
+        this.nowParticipants -= 1;
+
+        reopenIfFullAndAvailable(now);
+    }
+
+    // 인원 감소와 정원 수정에 동일한 자동 재개 조건 적용
+    private void reopenIfFullAndAvailable(LocalDateTime now) {
+        if (this.status == RecruitmentStatus.CLOSED
+                && this.closeReason == RecruitmentCloseReason.FULL
+                && this.nowParticipants < this.maxParticipants
+                && this.visibility == RecruitmentVisibility.VISIBLE
+                && this.deadlineAt.isAfter(now)
+                && this.activityAt.isAfter(now)) {
+            reopen(now);
         }
     }
 
     public void close(LocalDateTime now) {
+        close(RecruitmentCloseReason.MANUAL, now);
+    }
+
+    // 모집 마감 시각 경과로 마감. 활동 시작 이후에는 end()로 처리
+    public void closeByDeadline(LocalDateTime now) {
+        if (this.deadlineAt.isAfter(now) || !this.activityAt.isAfter(now)) {
+            throw new BusinessException(ErrorCode.INVALID_RECRUITMENT_STATUS_TRANSITION);
+        }
+
+        close(RecruitmentCloseReason.DEADLINE, now);
+    }
+
+    private void close(RecruitmentCloseReason reason, LocalDateTime now) {
         if (this.status != RecruitmentStatus.OPEN) {
             throw new BusinessException(ErrorCode.INVALID_RECRUITMENT_STATUS_TRANSITION);
         }
 
         this.status = RecruitmentStatus.CLOSED;
+        this.closeReason = reason;
         this.closedAt = now;
     }
 
@@ -211,6 +360,7 @@ public class Recruitments {
 
         this.status = RecruitmentStatus.OPEN;
         this.closedAt = null;
+        this.closeReason = null;
     }
 
     public void cancel(String reason, LocalDateTime now) {
@@ -230,7 +380,7 @@ public class Recruitments {
         this.canceledAt = now;
     }
 
-    public void complete(LocalDateTime now) {
+    public void end(LocalDateTime now) {
         if ((this.status != RecruitmentStatus.OPEN
                 && this.status != RecruitmentStatus.CLOSED)
                 || now.isBefore(this.activityAt)) {
@@ -238,10 +388,10 @@ public class Recruitments {
         }
 
         if (this.status == RecruitmentStatus.OPEN) {
-            close(now);
+            this.closedAt = now;
         }
 
-        this.status = RecruitmentStatus.COMPLETED;
-        this.completedAt = now;
+        this.status = RecruitmentStatus.ENDED;
+        this.endedAt = now;
     }
 }

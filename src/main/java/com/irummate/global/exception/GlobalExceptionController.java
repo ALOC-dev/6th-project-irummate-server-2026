@@ -4,6 +4,7 @@ package com.irummate.global.exception;
 import com.irummate.global.response.GlobalApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.dao.DataAccessResourceFailureException;
@@ -22,11 +23,15 @@ import java.util.List;
 public class GlobalExceptionController {
 
     // 요청 관리 Handler
-    // 기존 API 오류 정책은 유지하고 공지 API의 JSON/쿼리 형식 오류만 400으로 처리한다.
+    // 공지 API의 JSON/쿼리 오류와 모집 목록의 쿼리 형식 오류를 400으로 처리
     @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class})
-    public ResponseEntity<GlobalApiResponse<?>> handleNoticeInputFormat(Exception e, HttpServletRequest request) {
+    public ResponseEntity<GlobalApiResponse<?>> handleInputFormat(Exception e, HttpServletRequest request) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
-        if (!"/api/notices".equals(path) && !"/internal/notices".equals(path)) {
+        boolean notice = "/api/notices".equals(path) || "/internal/notices".equals(path);
+        boolean recruitmentListQuery = "GET".equals(request.getMethod())
+                && "/api/recruitments".equals(path)
+                && e instanceof MethodArgumentTypeMismatchException;
+        if (!notice && !recruitmentListQuery) {
             return handleException(e);
         }
         return ResponseEntity.badRequest().body(GlobalApiResponse.error(
@@ -112,6 +117,28 @@ public class GlobalExceptionController {
         return ResponseEntity
                 .status(httpStatus)
                 .body(GlobalApiResponse.error(httpStatus, e.getMessage(), null));
+
+    }
+
+
+
+    // 모든 API에서 발생한 비관적 잠금 실패를 409로 응답
+    @ExceptionHandler(PessimisticLockingFailureException.class)
+    public ResponseEntity<GlobalApiResponse<?>> handleLockConflict(
+            PessimisticLockingFailureException e
+    ){
+
+        log.warn("모집글 잠금 획득 실패: exception={}", e.getClass().getSimpleName());
+
+        ErrorCode errorCode = ErrorCode.LOCK_CONFLICT;
+
+        return ResponseEntity
+                .status(errorCode.getHttpStatus())
+                .body(GlobalApiResponse.error(
+                        errorCode.getHttpStatus(),
+                        errorCode.getMessage(),
+                        null
+                ));
 
     }
 

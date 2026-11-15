@@ -1,20 +1,21 @@
 package com.irummate.domain.recruitment.controller;
 
 import com.irummate.domain.recruitment.dto.*;
-import com.irummate.domain.recruitment.entity.Recruitments;
+import com.irummate.domain.recruitment.entity.RecruitmentCategory;
 import com.irummate.domain.recruitment.service.RecruitmentService;
 import com.irummate.global.response.GlobalApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
-import java.util.List;
+import java.time.LocalDateTime;
 
 
 @RestController
@@ -25,25 +26,30 @@ public class RecruitmentController {
 
     private final RecruitmentService recruitmentService;
 
-    // 전체 게시글을 조회하는 api
+    // 전체 또는 카테고리별 게시글을 커서 기준으로 조회하는 api
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "모집글 목록 조회 성공. 조회 결과가 없으면 빈 목록을 반환합니다."),
+            @ApiResponse(responseCode = "400", description = "커서의 작성 시각과 ID는 함께 전달해야 하며, ID는 양수이고 size는 1~50이어야 합니다."),
             @ApiResponse(responseCode = "401", description = "인증이 필요합니다.")
     })
     @GetMapping
-    public ResponseEntity<GlobalApiResponse<List<RecruitmentResponseDto>>> getRecruitments(
+    public ResponseEntity<GlobalApiResponse<RecruitmentListResponseDto>> getRecruitments(
             @AuthenticationPrincipal Long userId,
-            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(required = false) RecruitmentCategory category,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime cursorCreatedAt,
+            @RequestParam(required = false) Long cursorId,
             @RequestParam(defaultValue = "10") int size
     ){
 
-        List<RecruitmentResponseDto> response = recruitmentService.getRecruitments(userId, page, size);
+        RecruitmentListResponseDto response = recruitmentService.getRecruitments(
+                userId, category, cursorCreatedAt, cursorId, size);
 
         return ResponseEntity.ok(GlobalApiResponse.multiSuccess(
                 HttpStatus.OK,
                 "게시글 목록 조회 성공",
                 response,
-                response.size()
+                response.getItems().size()
         ));
     }
 
@@ -206,26 +212,26 @@ public class RecruitmentController {
     }
 
 
-    // 게시글 활동 완료 api
+    // 활동 시작에 따른 게시판 종료 api
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "모집글 활동 완료 처리 성공"),
+            @ApiResponse(responseCode = "200", description = "활동 시작에 따른 게시판 종료 성공"),
             @ApiResponse(responseCode = "401", description = "인증이 필요합니다."),
-            @ApiResponse(responseCode = "403", description = "해당 모집글의 작성자만 활동 완료 처리할 수 있습니다."),
+            @ApiResponse(responseCode = "403", description = "해당 모집글의 작성자만 게시판 종료 처리할 수 있습니다."),
             @ApiResponse(responseCode = "404", description = "모집글을 찾을 수 없습니다."),
-            @ApiResponse(responseCode = "409", description = "이미 취소 또는 완료되었거나 활동 시작 시각 전이어서 완료 처리할 수 없습니다.")
+            @ApiResponse(responseCode = "409", description = "이미 취소 또는 종료되었거나 활동 시작 시각 전이어서 종료 처리할 수 없습니다.")
     })
-    @PatchMapping("/{recruitmentId}/complete")
-    public ResponseEntity<GlobalApiResponse<RecruitmentDetailResponseDto>> completeRecruitment(
+    @PatchMapping("/{recruitmentId}/end")
+    public ResponseEntity<GlobalApiResponse<RecruitmentDetailResponseDto>> endRecruitment(
             @AuthenticationPrincipal Long userId,
             @PathVariable Long recruitmentId
     ) {
 
-        RecruitmentDetailResponseDto response = recruitmentService.completeRecruitment(userId, recruitmentId);
+        RecruitmentDetailResponseDto response = recruitmentService.endRecruitment(userId, recruitmentId);
 
 
         return ResponseEntity.ok(GlobalApiResponse.success(
                 HttpStatus.OK,
-                "게시글이 활동 완료 처리되었습니다.",
+                "활동 시작으로 게시판 처리가 종료되었습니다.",
                 response
         ));
     }

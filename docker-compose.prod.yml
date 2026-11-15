@@ -25,6 +25,10 @@ services:
       JWT_REFRESH_TOKEN_EXPIRATION: ${JWT_REFRESH_TOKEN_EXPIRATION:-1209600000}
       HASHIDS_SALT: ${HASHIDS_SALT}
       HASHIDS_MIN_LENGTH: ${HASHIDS_MIN_LENGTH:-8}
+      NOTIFICATION_PUSH_ENABLED: ${NOTIFICATION_PUSH_ENABLED:-false}
+      GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-/run/secrets/firebase.json}
+    volumes:
+      - ./secrets:/run/secrets:ro
     logging:
       driver: json-file
       options:

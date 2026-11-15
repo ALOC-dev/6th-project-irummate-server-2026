@@ -44,8 +44,8 @@ dependencies {
 	runtimeOnly 'org.postgresql:postgresql'
 
 	// DB 스키마 변경 이력
-//	implementation 'org.springframework.boot:spring-boot-starter-flyway'
-//	runtimeOnly 'org.flywaydb:flyway-database-postgresql'
+	// implementation 'org.springframework.boot:spring-boot-starter-flyway'
+	// runtimeOnly 'org.flywaydb:flyway-database-postgresql'
 
 	// S3 / API 문서
 	implementation platform("software.amazon.awssdk:bom:${awsSdkVersion}")
@@ -67,6 +67,14 @@ dependencies {
 	testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
 	testImplementation 'org.testcontainers:testcontainers-postgresql'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+
+	// Firebase Cloud Messaging
+	implementation 'com.google.firebase:firebase-admin:9.12.0'
+
+	// 캐시 작업용
+	implementation 'org.springframework.boot:spring-boot-starter-cache'
+	implementation 'com.github.ben-manes.caffeine:caffeine'
 }
 
 tasks.named('test') {

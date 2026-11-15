@@ -1,10 +1,8 @@
 package com.irummate.domain.recruitment.dto;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.irummate.domain.recruitment.entity.RecruitmentCategory;
-import com.irummate.domain.recruitment.entity.RecruitmentStatus;
-import com.irummate.domain.recruitment.entity.RecruitmentVisibility;
-import com.irummate.domain.recruitment.entity.Recruitments;
-import com.irummate.domain.user.entity.Users;
+import com.irummate.domain.recruitment.entity.RecruitmentPriceType;
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -16,7 +14,7 @@ import java.time.LocalDateTime;
 
 @Getter
 @Builder
-@NoArgsConstructor
+@NoArgsConstructor(onConstructor_ = @JsonCreator)
 @AllArgsConstructor
 public class RecruitmentCreateRequestDto {
 
@@ -28,10 +26,6 @@ public class RecruitmentCreateRequestDto {
     @NotBlank(message = "제목은 필수입니다.")
     @Size(max = 255, message = "제목은 255자 이하여야 합니다.")
     private String title;
-
-    // 모집 설명 및 참여 조건
-    @Size(max = 80, message = "내용은 80자 이하여야 합니다.")
-    private String content;
 
     // 활동 또는 만남 장소
     @Size(max = 255, message = "장소는 255자 이하여야 합니다.")
@@ -52,8 +46,19 @@ public class RecruitmentCreateRequestDto {
     @Min(value = 1, message = "작성자를 제외한 모집 인원은 1명 이상이어야 합니다.")
     private Integer maxParticipants;
 
-    // 예상 비용
-    @PositiveOrZero(message = "예상 비용은 0원 이상이어야 합니다.")
-    private Integer estimatedFee;
+    // 공동구매 시 필수: FIXED는 1인 금액, SPLIT은 총액
+    private RecruitmentPriceType priceType;
+
+    @Positive(message = "금액은 0원보다 커야 합니다.")
+    private Integer amount;
+
+    // JSON 입력의 앞뒤 공백을 먼저 제거해 정리된 값으로 길이와 필수 여부 검증
+    public void setTitle(String title) {
+        this.title = title == null ? null : title.strip();
+    }
+
+    public void setPlace(String place) {
+        this.place = place == null ? null : place.strip();
+    }
 
 }

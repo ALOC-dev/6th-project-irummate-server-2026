@@ -17,6 +17,7 @@ import com.irummate.global.util.HashIdsUtils;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -27,18 +28,13 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/matching")
+@RequiredArgsConstructor
 public class MatchingController {
 
 
     private final MatchingService matchingService;
     private final HashIdsUtils hashIdsUtils;
 
-    @Autowired
-    public MatchingController(MatchingService matchingService,
-                              HashIdsUtils hashIdsUtils){
-        this.matchingService = matchingService;
-        this.hashIdsUtils = hashIdsUtils;
-    }
 
 
     @ApiResponses({

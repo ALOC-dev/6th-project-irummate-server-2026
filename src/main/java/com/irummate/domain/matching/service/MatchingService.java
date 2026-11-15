@@ -17,6 +17,7 @@ import com.irummate.domain.user.repository.UsersRepository;
 import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
 import com.irummate.global.util.HashIdsUtils;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cglib.core.Local;
@@ -35,6 +36,7 @@ import static com.irummate.domain.matching.util.MatchingDtoMapper.toCardStatus;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class MatchingService {
 
     private final MatchRepository matchRepository;
@@ -43,19 +45,6 @@ public class MatchingService {
     private final ChatService chatService;
     private final HashIdsUtils hashIdsUtils;
 
-
-    @Autowired
-    public MatchingService(MatchRepository matchRepository,
-                           UserPreferencesRepository userPreferencesRepository,
-                           UsersRepository usersRepository,
-                           ChatService chatService,
-                           HashIdsUtils hashIdsUtils){
-        this.matchRepository = matchRepository;
-        this.userPreferencesRepository = userPreferencesRepository;
-        this.usersRepository = usersRepository;
-        this.chatService = chatService;
-        this.hashIdsUtils = hashIdsUtils;
-    }
 
 
     @Transactional

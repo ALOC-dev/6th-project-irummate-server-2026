@@ -58,6 +58,7 @@ public enum ErrorCode {
     RECRUITMENT_PARTICIPANT_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 모집글의 참여자를 찾을 수 없습니다."),
 
     // ── 409 ──
+    LOCK_CONFLICT(HttpStatus.CONFLICT, "다른 요청을 처리 중입니다. 잠시 후 다시 시도해 주세요."),
     DETAILS_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 필수 정보가 등록된 상태입니다."),
     CERTIFICATION_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 인증 요청이 존재합니다."),
     CERTIFICATION_ALREADY_PROCESSED(HttpStatus.CONFLICT, "이미 처리된 인증 건입니다."),
@@ -77,7 +78,7 @@ public enum ErrorCode {
     RECRUITMENT_HOST_CANNOT_LEAVE(HttpStatus.CONFLICT, "모집자는 참여 취소 대신 모집글을 취소해야 합니다."),
     RECRUITMENT_HOST_CANNOT_BE_REMOVED(HttpStatus.CONFLICT, "모집자는 참여자에서 제외할 수 없습니다."),
     INVALID_RECRUITMENT_STATUS_TRANSITION(HttpStatus.CONFLICT, "요청한 모집글 상태로 변경할 수 없습니다."),
-    RECRUITMENT_UPDATE_CONFLICT(HttpStatus.CONFLICT, "모집글이 동시에 변경되었습니다. 다시 시도해 주세요."),
+    RECRUITMENT_HIDDEN(HttpStatus.CONFLICT, "숨김 처리된 모집글은 변경할 수 없습니다."),
 
     // ── 422 ──
     NOT_ACCEPTED_STATUS(HttpStatus.UNPROCESSABLE_ENTITY, "ACCEPTED 상태에서만 확정할 수 있습니다."),

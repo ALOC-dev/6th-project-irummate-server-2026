@@ -1,28 +1,28 @@
 package com.irummate.domain.matching.service;
 
 import com.irummate.domain.matching.dto.MatchingConfigDto;
+import com.irummate.domain.matching.dto.MatchingPeriod;
 import com.irummate.domain.matching.entity.MatchingConfig;
 import com.irummate.domain.matching.repository.MatchingConfigRepository;
 import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 
 @Service
+@RequiredArgsConstructor
 public class MatchingConfigService {
 
     private final MatchingConfigRepository matchingConfigRepository;
-
-    @Autowired
-    public MatchingConfigService(MatchingConfigRepository matchingConfigRepository){
-        this.matchingConfigRepository = matchingConfigRepository;
-    }
+    private final MatchingPeriodProvider matchingPeriodProvider;
 
 
     @Transactional
+    @CacheEvict(cacheNames = MatchingPeriodProvider.CACHE_NAME, key = MatchingPeriodProvider.CACHE_KEY)
     public void setMatchDate(LocalDate surveyStartDate,
                              LocalDate matchStartDate,
                              LocalDate matchEndDate){
@@ -49,15 +49,15 @@ public class MatchingConfigService {
 
     }
 
-    @Transactional(readOnly = true)
+
+
     public MatchingConfigDto getMatchDate(){
-        MatchingConfig config = matchingConfigRepository.findById(MatchingConfig.SINGLETON_ID)
-                .orElseThrow(()->new BusinessException(ErrorCode.MATCH_DATE_NOT_FOUND));
+        MatchingPeriod matchingPeriod = matchingPeriodProvider.getRequired();
 
         MatchingConfigDto matchingConfigDto = new MatchingConfigDto();
-        matchingConfigDto.setSurveyStartDate(config.getSurveyStartDate());
-        matchingConfigDto.setMatchStartDate(config.getMatchStartDate());
-        matchingConfigDto.setMatchEndDate(config.getMatchEndDate());
+        matchingConfigDto.setSurveyStartDate(matchingPeriod.surveyStartDate());
+        matchingConfigDto.setMatchStartDate(matchingPeriod.matchStartDate());
+        matchingConfigDto.setMatchEndDate(matchingPeriod.matchEndDate());
 
         return matchingConfigDto;
     }

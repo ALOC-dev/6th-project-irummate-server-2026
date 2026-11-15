@@ -1,13 +1,17 @@
 package com.irummate.domain.recruitment.dto;
 
 import com.irummate.domain.recruitment.entity.RecruitmentCategory;
+import com.irummate.domain.recruitment.entity.RecruitmentHiddenReason;
+import com.irummate.domain.recruitment.entity.RecruitmentPriceType;
 import com.irummate.domain.recruitment.entity.RecruitmentStatus;
+import com.irummate.domain.recruitment.entity.RecruitmentVisibility;
 import com.irummate.domain.recruitment.entity.Recruitments;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 @Getter
 @Builder
@@ -17,9 +21,12 @@ public class RecruitmentResponseDto {
     // 게시글 정보
     private final Long recruitmentId;
     private final String title;
-    private final String content;
     private final RecruitmentCategory category;
     private final RecruitmentStatus status;
+
+    // 게시글 공개 상태 및 숨김 사유
+    private final RecruitmentVisibility visibility;
+    private final RecruitmentHiddenReason hiddenReason;
 
     // 작성자 정보
     private final Long authorId;
@@ -30,6 +37,9 @@ public class RecruitmentResponseDto {
     private final String place;
     private final LocalDateTime activityAt;
     private final LocalDateTime deadlineAt;
+    private final RecruitmentPriceType priceType;
+    private final Integer amount;
+    // 올림 계산한 예상 1인 금액 (실제 정산액 아님)
     private final Integer estimatedFee;
 
     // 모집 인원 정보
@@ -41,28 +51,29 @@ public class RecruitmentResponseDto {
     private final LocalDateTime createdAt;
 
     // 현재 로그인 사용자와 모집글의 관계
-    private final ParticipationView participating;
-
-    public enum ParticipationView {
-        MINE,
-        JOINED,
-        NONE
-    }
+    private final RecruitmentParticipationView participating;
+    private final boolean joinable;
 
     public static RecruitmentResponseDto from(
             Recruitments recruitment,
-            ParticipationView participating
+            RecruitmentParticipationView participating
     ) {
-
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+        boolean joinable = participating.isJoinable(recruitment, now);
         boolean full = recruitment.getNowParticipants()
                 >= recruitment.getMaxParticipants();
 
         return RecruitmentResponseDto.builder()
                 .recruitmentId(recruitment.getId())
                 .title(recruitment.getTitle())
-                .content(recruitment.getContent())
                 .category(recruitment.getCategory())
                 .status(recruitment.getStatus())
+                .visibility(recruitment.getVisibility())
+                .hiddenReason(
+                        recruitment.getVisibility() == RecruitmentVisibility.HIDDEN
+                                ? recruitment.getHiddenReason()
+                                : null
+                )
 
                 .authorId(recruitment.getAuthor().getId())
                 .authorNickname(recruitment.getAuthor().getNickname())
@@ -73,12 +84,18 @@ public class RecruitmentResponseDto {
                 .place(recruitment.getPlace())
                 .activityAt(recruitment.getActivityAt())
                 .deadlineAt(recruitment.getDeadlineAt())
-                .estimatedFee(recruitment.getEstimatedFee())
+                .priceType(recruitment.getPriceType())
+                .amount(recruitment.getAmount())
+                .estimatedFee(recruitment.calculateEstimatedFee(
+                        joinable,
+                        now
+                ))
 
                 .nowParticipants(recruitment.getNowParticipants())
                 .maxParticipants(recruitment.getMaxParticipants())
                 .full(full)
                 .participating(participating)
+                .joinable(joinable)
 
                 .createdAt(recruitment.getCreatedAt())
                 .build();

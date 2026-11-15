@@ -1,57 +1,46 @@
 package com.irummate.global.aop;
 
-import com.irummate.domain.matching.entity.MatchingConfig;
-import com.irummate.domain.matching.repository.MatchingConfigRepository;
+import com.irummate.domain.certification.entity.CertificationStatus;
+import com.irummate.domain.certification.repository.CertificationRepository;
+import com.irummate.domain.matching.service.MatchingPeriodProvider;
 import com.irummate.domain.survey.entity.UserPreferences;
 import com.irummate.domain.survey.repository.UserPreferencesRepository;
 import com.irummate.domain.user.entity.UserStatus;
 import com.irummate.domain.user.entity.Users;
-import com.irummate.domain.user.repository.UsersRepository;
 import com.irummate.domain.user.repository.UserDetailsRepository;
-import com.irummate.domain.certification.entity.CertificationStatus;
-import com.irummate.domain.certification.repository.CertificationRepository;
-import com.irummate.global.util.SemesterUtils;
+import com.irummate.domain.user.repository.UsersRepository;
 import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
+import com.irummate.global.util.SemesterUtils;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
+import java.time.Clock;
 import java.time.LocalDate;
-import java.time.ZoneId;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 
 @Slf4j
 @Aspect
 @Component
+@RequiredArgsConstructor
 // 인증·인가 등 기존 검증을 차단 검증(UserBlockAspect)보다 먼저 수행한다.
 @Order(100)
 public class ValidationAspect {
 
     private final UserPreferencesRepository userPreferencesRepository;
     private final UsersRepository usersRepository;
-    private final MatchingConfigRepository matchingConfigRepository;
     private final CertificationRepository certificationRepository;
     private final UserDetailsRepository userDetailsRepository;
-
-    @Autowired
-    public ValidationAspect(UserPreferencesRepository userPreferencesRepository,
-                            UsersRepository usersRepository,
-                             MatchingConfigRepository matchingConfigRepository,
-                             CertificationRepository certificationRepository,
-                             UserDetailsRepository userDetailsRepository){
-        this.userPreferencesRepository = userPreferencesRepository;
-        this.usersRepository = usersRepository;
-        this.matchingConfigRepository = matchingConfigRepository;
-        this.certificationRepository = certificationRepository;
-        this.userDetailsRepository = userDetailsRepository;
-    }
+    private final MatchingPeriodProvider matchingPeriodProvider;
+    private final Clock clock;
 
     @Before("@annotation(com.irummate.global.aop.RequiresDetails)")
     public void checkDetailsCompleted(){
@@ -89,7 +78,7 @@ public class ValidationAspect {
                 .findByUser_IdAndSemester(userId, SemesterUtils.currentSemester())
                 .filter(certification -> certification.getCertificationStatus() == CertificationStatus.APPROVED)
                 .filter(certification -> certification.getExpiresAt() == null
-                        || certification.getExpiresAt().isAfter(java.time.LocalDateTime.now()))
+                        || certification.getExpiresAt().isAfter(LocalDateTime.now(clock)))
                 .isPresent();
 
         if (!approved) {
@@ -133,13 +122,7 @@ public class ValidationAspect {
     // @RequiresMatchDate
     @Before("@annotation(com.irummate.global.aop.RequiresMatchDate)")
     public void checkMatchDate(){
-
-        MatchingConfig matchingConfig = matchingConfigRepository.findById(MatchingConfig.SINGLETON_ID)
-                .orElseThrow(()->new BusinessException(ErrorCode.MATCH_DATE_NOT_FOUND));
-
-        LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
-
-        if(today.isBefore(matchingConfig.getMatchStartDate()) || today.isAfter(matchingConfig.getMatchEndDate())){
+        if(!matchingPeriodProvider.getRequired().isMatchOpen(LocalDate.now(clock))){
             throw new BusinessException(ErrorCode.MATCH_NOT_OPEN);
         }
 
@@ -149,12 +132,7 @@ public class ValidationAspect {
     // @RequriesSurveyDate
     @Before("@annotation(com.irummate.global.aop.RequiresSurveyDate)")
     public void checkSurveyDate(){
-        MatchingConfig matchingConfig = matchingConfigRepository.findById(MatchingConfig.SINGLETON_ID)
-                .orElseThrow(()->new BusinessException(ErrorCode.MATCH_DATE_NOT_FOUND));
-
-        LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
-
-        if(today.isBefore(matchingConfig.getSurveyStartDate()) || today.isAfter(matchingConfig.getMatchEndDate())){
+        if(!matchingPeriodProvider.getRequired().isSurveyOpen(LocalDate.now(clock))){
             throw new BusinessException(ErrorCode.SURVEY_NOT_OPEN);
         }
     }

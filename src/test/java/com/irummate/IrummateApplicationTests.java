@@ -2,6 +2,7 @@ package com.irummate;
 
 import com.irummate.domain.auth.dto.KakaoTokenResponseDto;
 import com.irummate.domain.auth.dto.KakaoUserInfoResponseDto;
+import com.irummate.domain.recruitment.scheduler.RecruitmentScheduler;
 import com.irummate.domain.survey.dto.SurveyAnswers;
 import com.irummate.domain.survey.entity.SurveyAnswerField;
 import com.irummate.domain.survey.entity.UserPreferences;
@@ -73,6 +74,10 @@ class IrummateApplicationTests {
 
     @MockitoBean
     private S3Presigner s3Presigner;
+
+    // 예약 작업이 테스트 중이나 DB 종료 시점에 실제 트랜잭션을 시작하지 않도록 격리
+    @MockitoBean
+    private RecruitmentScheduler recruitmentScheduler;
 
     @Autowired
     private EntityManager entityManager;

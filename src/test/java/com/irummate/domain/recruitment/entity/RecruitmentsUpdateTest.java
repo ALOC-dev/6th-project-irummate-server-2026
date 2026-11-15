@@ -16,13 +16,14 @@ class RecruitmentsUpdateTest {
     private Recruitments recruitment(RecruitmentStatus status) {
         return Recruitments.builder()
                 .title("기존 제목")
-                .content("기존 내용")
                 .place("기존 장소")
                 .activityAt(now.plusDays(2))
                 .deadlineAt(now.plusDays(1))
                 .nowParticipants(3)
                 .maxParticipants(5)
-                .estimatedFee(1000)
+                .category(RecruitmentCategory.GROUP_BUY)
+                .priceType(RecruitmentPriceType.FIXED)
+                .amount(1000)
                 .status(status)
                 .visibility(RecruitmentVisibility.VISIBLE)
                 .build();
@@ -34,20 +35,20 @@ class RecruitmentsUpdateTest {
                 "{\"title\":\"새 제목\"}", RecruitmentUpdateRequestDto.class);
         Recruitments recruitment = recruitment(RecruitmentStatus.OPEN);
 
-        recruitment.update(request.getTitle(), request.getContent(), request.getPlace(),
+        recruitment.update(request.getTitle(), request.getPlace(),
                 request.getActivityAt(), request.getDeadlineAt(),
-                request.getMaxParticipants(), request.getEstimatedFee(), now);
+                request.getMaxParticipants(), request.getPriceType(), request.getAmount(), now);
 
         assertTrue(request.isUpdateRequested());
         assertFalse(new ObjectMapper().readValue("{}",
                 RecruitmentUpdateRequestDto.class).isUpdateRequested());
         assertEquals("새 제목", recruitment.getTitle());
-        assertEquals("기존 내용", recruitment.getContent());
         assertEquals("기존 장소", recruitment.getPlace());
         assertEquals(now.plusDays(2), recruitment.getActivityAt());
         assertEquals(now.plusDays(1), recruitment.getDeadlineAt());
         assertEquals(5, recruitment.getMaxParticipants());
-        assertEquals(1000, recruitment.getEstimatedFee());
+        assertEquals(1000, recruitment.getAmount());
+        assertEquals(RecruitmentPriceType.FIXED, recruitment.getPriceType());
     }
 
     @Test
@@ -55,9 +56,9 @@ class RecruitmentsUpdateTest {
         Recruitments recruitment = recruitment(RecruitmentStatus.OPEN);
 
         assertThrows(BusinessException.class, () -> recruitment.update(
-                "변경 제목", null, null, now.plusHours(1), null, null, null, now));
+                "변경 제목", null, now.plusHours(1), null, null, null, null, now));
         assertThrows(BusinessException.class, () -> recruitment.update(
-                "변경 제목", null, null, null, null, 2, null, now));
+                "변경 제목", null, null, null, 2, null, null, now));
 
         assertEquals("기존 제목", recruitment.getTitle());
         assertEquals(5, recruitment.getMaxParticipants());
@@ -66,7 +67,7 @@ class RecruitmentsUpdateTest {
     @Test
     void reducingCapacityToCurrentCountClosesRecruitment() {
         Recruitments recruitment = recruitment(RecruitmentStatus.OPEN);
-        recruitment.update(null, null, null, null, null, 3, null, now);
+        recruitment.update(null, null, null, null, 3, null, null, now);
         assertEquals(RecruitmentStatus.CLOSED, recruitment.getStatus());
         assertEquals(now, recruitment.getClosedAt());
     }
@@ -74,7 +75,7 @@ class RecruitmentsUpdateTest {
     @Test
     void increasingCapacityDoesNotReopenClosedRecruitment() {
         Recruitments recruitment = recruitment(RecruitmentStatus.CLOSED);
-        recruitment.update(null, null, null, null, null, 6, null, now);
+        recruitment.update(null, null, null, null, 6, null, null, now);
         assertEquals(6, recruitment.getMaxParticipants());
         assertEquals(RecruitmentStatus.CLOSED, recruitment.getStatus());
     }

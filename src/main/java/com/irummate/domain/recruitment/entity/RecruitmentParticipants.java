@@ -1,6 +1,8 @@
 package com.irummate.domain.recruitment.entity;
 
 import com.irummate.domain.user.entity.Users;
+import com.irummate.global.exception.BusinessException;
+import com.irummate.global.exception.ErrorCode;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -57,6 +59,10 @@ public class RecruitmentParticipants {
     @Column(name = "left_at")
     private LocalDateTime leftAt;
 
+    // 강제 제외 사유 (자진 나가기는 null)
+    @Column(name = "removal_reason", length = 100)
+    private String removalReason;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -102,6 +108,33 @@ public class RecruitmentParticipants {
                 RecruitmentParticipantRole.MEMBER,
                 joinedAt
         );
+    }
+
+    public void leave(LocalDateTime now) {
+        if (this.role == RecruitmentParticipantRole.HOST) {
+            throw new BusinessException(ErrorCode.RECRUITMENT_HOST_CANNOT_LEAVE);
+        }
+        if (this.status != RecruitmentParticipantStatus.JOINED) {
+            throw new BusinessException(ErrorCode.RECRUITMENT_PARTICIPANT_NOT_ACTIVE);
+        }
+
+        this.status = RecruitmentParticipantStatus.LEFT;
+        this.leftAt = now;
+    }
+
+    public void remove(String reason, LocalDateTime now) {
+        if (this.role == RecruitmentParticipantRole.HOST) {
+            throw new BusinessException(ErrorCode.RECRUITMENT_HOST_CANNOT_BE_REMOVED);
+        }
+        if (this.status != RecruitmentParticipantStatus.JOINED) {
+            throw new BusinessException(ErrorCode.RECRUITMENT_PARTICIPANT_NOT_ACTIVE);
+        }
+        if (reason == null || reason.isBlank() || reason.length() > 100) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+        this.status = RecruitmentParticipantStatus.REMOVED;
+        this.leftAt = now;
+        this.removalReason = reason.strip();
     }
 
     @PrePersist

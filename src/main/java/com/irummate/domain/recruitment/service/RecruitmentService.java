@@ -8,14 +8,14 @@ import com.irummate.domain.user.entity.Users;
 import com.irummate.domain.user.repository.UsersRepository;
 import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
@@ -24,9 +24,22 @@ import java.util.List;
 @RequiredArgsConstructor
 public class RecruitmentService {
 
+    private static final int MAX_PAGE_SIZE = 50;
+
     private final RecruitmentsRepository recruitmentsRepository;
     private final RecruitmentParticipantsRepository recruitmentParticipantsRepository;
     private final UsersRepository usersRepository;
+
+    @PersistenceContext
+    private EntityManager entityManager;
+
+
+    // 모든 DB 상태 update 간 적용
+    // 현재 요청의 트랜잭션에서만 잠금 대기를 1.5초로 제한
+    private void applyLockTimeout() {
+        entityManager.createNativeQuery("SET LOCAL lock_timeout = '1500ms'")
+                .executeUpdate();
+    }
 
 
     @Transactional(readOnly = true)
@@ -44,45 +57,33 @@ public class RecruitmentService {
         Recruitments recruitment = recruitmentsRepository.findById(recruitmentId)
                 .orElseThrow(()-> new BusinessException(ErrorCode.RECRUITMENT_NOT_FOUND));
 
+
+
         // 게시글 소유자 확인
         boolean mine =
                 recruitment.getAuthor().getId().equals(userId);
 
-        // 해당 이미 참여중인지 확인
-        boolean participating =
-                recruitmentParticipantsRepository
-                        .existsByRecruitment_IdAndUser_IdAndStatus(
-                                recruitmentId,
-                                userId,
-                                RecruitmentParticipantStatus.JOINED
-                        );
 
-        // 게시글이 가득찼는지 여부
-        boolean full =
-                recruitment.getNowParticipants()
-                        >= recruitment.getMaxParticipants();
 
-        // 참여가능한지 여부 판단
-        // 본인 게시글이 아닌지 판단
-        // 게시글 상태와 공개 상태 확인
-        // 인원과 데드라인 확인
-        boolean joinable =
-                !mine
-                        && !participating
-                        && recruitment.getStatus() == RecruitmentStatus.OPEN
-                        && recruitment.getVisibility()
-                        == RecruitmentVisibility.VISIBLE
-                        && !full
-                        && recruitment.getDeadlineAt().isAfter(
-                        LocalDateTime.now(ZoneId.of("Asia/Seoul"))
-                );
+        // 숨김 처리된 글인지 확인
+        // 숨김 처리된 글은 사용자에게 공개되지 않으므로 숨김 처리
+        // 단, 작성자는 조회 가능
+        if(!mine && recruitment.getVisibility() == RecruitmentVisibility.HIDDEN){
+            throw new BusinessException(ErrorCode.RECRUITMENT_NOT_FOUND);
+        }
+
+        // 로그인 사용자 본인의 참여 기록만 조회
+        RecruitmentParticipants myParticipation = recruitmentParticipantsRepository
+                .findByRecruitment_IdAndUser_Id(recruitmentId, userId)
+                .orElse(null);
 
         // Dto로 변환해 반환
         return RecruitmentDetailResponseDto.from(
                 recruitment,
-                mine,
-                participating,
-                joinable
+                RecruitmentParticipationView.from(
+                        mine, myParticipation == null ? null : myParticipation.getStatus()
+                ),
+                myParticipation == null ? null : myParticipation.getRemovalReason()
         );
 
 
@@ -90,27 +91,48 @@ public class RecruitmentService {
 
 
     @Transactional(readOnly = true)
-    public List<RecruitmentResponseDto> getRecruitments(
+    public RecruitmentListResponseDto getRecruitments(
             Long userId,
-            int page,
+            RecruitmentCategory category,
+            LocalDateTime cursorCreatedAt,
+            Long cursorId,
             int size
     ){
+        validateCursorRequest(cursorCreatedAt, cursorId, size);
 
-        Pageable pageable = PageRequest.of(page, size);
+        // 다음 목록 유무 확인용 1건만 추가 조회. 오프셋은 항상 0으로 유지
+        Pageable pageable = PageRequest.of(0, size + 1);
 
-        return recruitmentsRepository.findRecruitmentList(
+        List<RecruitmentsRepository.RecruitmentListRow> rows = recruitmentsRepository.findRecruitmentList(
                 userId,
-                RecruitmentParticipantStatus.JOINED,
+                category,
                 RecruitmentVisibility.VISIBLE,
+                cursorCreatedAt,
+                cursorId,
                 pageable
-                )
+        );
+
+        boolean hasNext = rows.size() > size;
+        List<RecruitmentsRepository.RecruitmentListRow> selectedRows = hasNext ? rows.subList(0, size) : rows;
+        List<RecruitmentResponseDto> items = selectedRows.stream()
                 .map(row -> RecruitmentResponseDto.from(
                         row.getRecruitment(),
-                        RecruitmentResponseDto.ParticipationView.valueOf(
-                                row.getParticipating()
+                        RecruitmentParticipationView.from(
+                                row.getRecruitment().getAuthor().getId().equals(userId),
+                                row.getParticipantStatus()
                         )
                 ))
-                .getContent();
+                .toList();
+
+        // 확인용 추가 행이 아닌, 실제 반환한 마지막 행을 다음 커서로 사용
+        RecruitmentCursorDto nextCursor = hasNext
+                ? RecruitmentCursorDto.from(selectedRows.getLast().getRecruitment()) : null;
+
+        return RecruitmentListResponseDto.builder()
+                .items(items)
+                .hasNext(hasNext)
+                .nextCursor(nextCursor)
+                .build();
     }
 
 
@@ -152,22 +174,30 @@ public class RecruitmentService {
             Users author,
             RecruitmentCreateRequestDto request
     ) {
-        return Recruitments.builder()
+        Recruitments recruitment = Recruitments.builder()
                 .author(author)
                 .category(request.getCategory())
-                .title(request.getTitle())
-                .content(request.getContent())
-                .place(request.getPlace())
                 .activityAt(request.getActivityAt())
                 .deadlineAt(request.getDeadlineAt())
                 .maxParticipants(includeHostInCapacity(request.getMaxParticipants()))
-                .estimatedFee(request.getEstimatedFee())
                 .status(RecruitmentStatus.OPEN)
                 .visibility(RecruitmentVisibility.VISIBLE)
                 .nowParticipants(1)
                 .build();
+        recruitment.configureText(request.getTitle(), request.getPlace());
+        recruitment.configurePrice(request.getPriceType(), request.getAmount());
+        return recruitment;
     }
 
+
+    // 커서는 두 값 모두 생략하거나 모두 전달. 잘못된 값은 DB 조회 전에 거부
+    private void validateCursorRequest(LocalDateTime cursorCreatedAt, Long cursorId, int size) {
+        if (size < 1 || size > MAX_PAGE_SIZE
+                || (cursorCreatedAt == null) != (cursorId == null)
+                || (cursorId != null && cursorId <= 0)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+    }
 
     private int includeHostInCapacity(int requestedParticipants) {
         if (requestedParticipants < 1 || requestedParticipants == Integer.MAX_VALUE) {
@@ -183,10 +213,17 @@ public class RecruitmentService {
             Long recruitmentId,
             RecruitmentUpdateRequestDto request
     ){
+        applyLockTimeout();
 
         // 게시글 조회
         Recruitments recruitment = recruitmentsRepository.findByIdForUpdate(recruitmentId)
                 .orElseThrow(()-> new BusinessException(ErrorCode.RECRUITMENT_NOT_FOUND));
+
+
+        // 게시글이 숨김 처리되어 있으면 거부
+        if(recruitment.getVisibility() == RecruitmentVisibility.HIDDEN){
+            throw new BusinessException(ErrorCode.RECRUITMENT_HIDDEN);
+        }
 
 
         // 요청한 user가 author인지 검증
@@ -202,30 +239,22 @@ public class RecruitmentService {
         // 게시글 update
         recruitment.update(
                 request.getTitle(),
-                request.getContent(),
                 request.getPlace(),
                 request.getActivityAt(),
                 request.getDeadlineAt(),
                 request.getMaxParticipants() == null
                         ? null : includeHostInCapacity(request.getMaxParticipants()),
-                request.getEstimatedFee(),
+                request.getPriceType(),
+                request.getAmount(),
                 LocalDateTime.now(ZoneId.of("Asia/Seoul"))
         );
 
         recruitmentsRepository.flush();
 
-        boolean participating = recruitmentParticipantsRepository
-                .existsByRecruitment_IdAndUser_IdAndStatus(
-                        recruitmentId,
-                        userId,
-                        RecruitmentParticipantStatus.JOINED
-                );
-
         return RecruitmentDetailResponseDto.from(
                 recruitment,
-                true,
-                participating,
-                false
+                RecruitmentParticipationView.MINE,
+                null
                 );
     }
 
@@ -235,10 +264,18 @@ public class RecruitmentService {
             Long userId,
             Long recruitmentId
     ){
+        applyLockTimeout();
 
         // 게시글 조회
         Recruitments recruitment = recruitmentsRepository.findByIdForUpdate(recruitmentId)
                 .orElseThrow(()-> new BusinessException(ErrorCode.RECRUITMENT_NOT_FOUND));
+
+
+        // 게시글이 숨김 처리되어 있으면 거부
+        if(recruitment.getVisibility() == RecruitmentVisibility.HIDDEN){
+            throw new BusinessException(ErrorCode.RECRUITMENT_HIDDEN);
+        }
+
 
 
         // user가 게시글의 Author인지 확인
@@ -261,9 +298,8 @@ public class RecruitmentService {
         // 결과 반환
         return RecruitmentDetailResponseDto.from(
                 recruitment,
-                true,
-                true,
-                false
+                RecruitmentParticipationView.MINE,
+                null
         );
 
     }
@@ -274,10 +310,16 @@ public class RecruitmentService {
             Long userId,
             Long recruitmentId
     ){
+        applyLockTimeout();
 
         // recruitment 조회
         Recruitments recruitment = recruitmentsRepository.findByIdForUpdate(recruitmentId)
                 .orElseThrow(()->new BusinessException(ErrorCode.RECRUITMENT_NOT_FOUND));
+
+        // 게시글이 숨김 처리되어 있으면 거부
+        if(recruitment.getVisibility() == RecruitmentVisibility.HIDDEN){
+            throw new BusinessException(ErrorCode.RECRUITMENT_HIDDEN);
+        }
 
 
         // user가 게시글의 author인지 확인
@@ -293,9 +335,8 @@ public class RecruitmentService {
 
         return RecruitmentDetailResponseDto.from(
                 recruitment,
-                true,
-                true,
-                false
+                RecruitmentParticipationView.MINE,
+                null
         );
     }
 
@@ -307,10 +348,17 @@ public class RecruitmentService {
             Long recruitmentId,
             RecruitmentCancelRequestDto request
     ){
+        applyLockTimeout();
 
         // 게시글 조회
         Recruitments recruitment = recruitmentsRepository.findByIdForUpdate(recruitmentId)
                 .orElseThrow(()->new BusinessException(ErrorCode.RECRUITMENT_NOT_FOUND));
+
+
+        // 게시글이 숨김 처리되어 있으면 거부
+        if(recruitment.getVisibility() == RecruitmentVisibility.HIDDEN){
+            throw new BusinessException(ErrorCode.RECRUITMENT_HIDDEN);
+        }
 
 
         // user가 게시글의 author인지 확인
@@ -321,26 +369,32 @@ public class RecruitmentService {
         // 취소
         recruitment.cancel(request.getCancelReason(), LocalDateTime.now(ZoneId.of("Asia/Seoul")));
 
-
         recruitmentsRepository.flush();
 
         return RecruitmentDetailResponseDto.from(
                 recruitment,
-                true,
-                true,
-                false
+                RecruitmentParticipationView.MINE,
+                null
         );
     }
 
     @Transactional
-    public RecruitmentDetailResponseDto completeRecruitment(
+    public RecruitmentDetailResponseDto endRecruitment(
             Long userId,
             Long recruitmentId
     ){
+        applyLockTimeout();
 
         // 게시글 조회
         Recruitments recruitment = recruitmentsRepository.findByIdForUpdate(recruitmentId)
                 .orElseThrow(()->new BusinessException(ErrorCode.RECRUITMENT_NOT_FOUND));
+
+
+        // 게시글이 숨김 처리되어 있으면 거부
+        if(recruitment.getVisibility() == RecruitmentVisibility.HIDDEN){
+            throw new BusinessException(ErrorCode.RECRUITMENT_HIDDEN);
+        }
+
 
 
         // user가 게시글의 author인지 확인
@@ -349,16 +403,15 @@ public class RecruitmentService {
         }
 
 
-        // 활동 완료 처리
-        recruitment.complete(LocalDateTime.now(ZoneId.of("Asia/Seoul")));
+        // 활동 시작 이후 게시판 처리 종료
+        recruitment.end(LocalDateTime.now(ZoneId.of("Asia/Seoul")));
 
         recruitmentsRepository.flush();
 
         return RecruitmentDetailResponseDto.from(
                 recruitment,
-                true,
-                true,
-                false
+                RecruitmentParticipationView.MINE,
+                null
         );
 
     }
