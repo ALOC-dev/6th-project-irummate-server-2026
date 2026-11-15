@@ -39,6 +39,7 @@ public class RecruitmentDetailResponseDto {
     // 현재 로그인 사용자 기준 정보
     private final RecruitmentParticipationView participating;
     private final boolean joinable;
+    private final boolean bookmarked;
 
     // 현재 로그인 사용자 본인의 강제 제외 사유
     private final String removalReason;
@@ -60,7 +61,8 @@ public class RecruitmentDetailResponseDto {
     public static RecruitmentDetailResponseDto from(
             Recruitments recruitment,
             RecruitmentParticipationView participating,
-            String removalReason
+            String removalReason,
+            boolean bookmarked
     ) {
         LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
         boolean joinable = participating.isJoinable(recruitment, now);
@@ -98,6 +100,7 @@ public class RecruitmentDetailResponseDto {
 
                 .participating(participating)
                 .joinable(joinable)
+                .bookmarked(bookmarked)
                 .removalReason(participating == RecruitmentParticipationView.REMOVED
                         ? removalReason : null)
 

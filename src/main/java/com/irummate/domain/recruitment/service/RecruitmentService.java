@@ -4,6 +4,7 @@ import com.irummate.domain.recruitment.dto.*;
 import com.irummate.domain.recruitment.entity.*;
 import com.irummate.domain.recruitment.repository.RecruitmentParticipantsRepository;
 import com.irummate.domain.recruitment.repository.RecruitmentsRepository;
+import com.irummate.domain.recruitment.repository.RecruitmentBookmarksRepository;
 import com.irummate.domain.user.entity.Users;
 import com.irummate.domain.user.repository.UsersRepository;
 import com.irummate.global.exception.BusinessException;
@@ -29,6 +30,7 @@ public class RecruitmentService {
     private final RecruitmentsRepository recruitmentsRepository;
     private final RecruitmentParticipantsRepository recruitmentParticipantsRepository;
     private final UsersRepository usersRepository;
+    private final RecruitmentBookmarksRepository recruitmentBookmarksRepository;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -83,7 +85,8 @@ public class RecruitmentService {
                 RecruitmentParticipationView.from(
                         mine, myParticipation == null ? null : myParticipation.getStatus()
                 ),
-                myParticipation == null ? null : myParticipation.getRemovalReason()
+                myParticipation == null ? null : myParticipation.getRemovalReason(),
+                recruitmentBookmarksRepository.existsByUser_IdAndRecruitment_Id(userId, recruitmentId)
         );
 
 
@@ -94,23 +97,28 @@ public class RecruitmentService {
     public RecruitmentListResponseDto getRecruitments(
             Long userId,
             RecruitmentCategory category,
+            RecruitmentSort sort,
             LocalDateTime cursorCreatedAt,
+            LocalDateTime cursorDeadlineAt,
             Long cursorId,
             int size
     ){
-        validateCursorRequest(cursorCreatedAt, cursorId, size);
+        validateCursorRequest(sort, cursorCreatedAt, cursorDeadlineAt, cursorId, size);
 
         // 다음 목록 유무 확인용 1건만 추가 조회. 오프셋은 항상 0으로 유지
         Pageable pageable = PageRequest.of(0, size + 1);
 
-        List<RecruitmentsRepository.RecruitmentListRow> rows = recruitmentsRepository.findRecruitmentList(
-                userId,
-                category,
-                RecruitmentVisibility.VISIBLE,
-                cursorCreatedAt,
-                cursorId,
-                pageable
-        );
+        List<RecruitmentsRepository.RecruitmentListRow> rows;
+        if (sort == RecruitmentSort.CLOSING_SOON) {
+            // 한 요청 안에서는 같은 시각을 기준으로 마감 여부와 24시간 범위를 판단
+            LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+            rows = recruitmentsRepository.findClosingSoonRecruitmentList(
+                    userId, category, RecruitmentVisibility.VISIBLE, RecruitmentStatus.OPEN,
+                    now, now.plusHours(24), cursorDeadlineAt, cursorId, pageable);
+        } else {
+            rows = recruitmentsRepository.findRecruitmentList(
+                    userId, category, RecruitmentVisibility.VISIBLE, cursorCreatedAt, cursorId, pageable);
+        }
 
         boolean hasNext = rows.size() > size;
         List<RecruitmentsRepository.RecruitmentListRow> selectedRows = hasNext ? rows.subList(0, size) : rows;
@@ -118,15 +126,16 @@ public class RecruitmentService {
                 .map(row -> RecruitmentResponseDto.from(
                         row.getRecruitment(),
                         RecruitmentParticipationView.from(
-                                row.getRecruitment().getAuthor().getId().equals(userId),
+                                userId.equals(row.getAuthorId()),
                                 row.getParticipantStatus()
-                        )
+                        ),
+                        row.getAuthorId(), row.getAuthorNickname(), row.getAuthorProfileImageUrl(), row.isBookmarked()
                 ))
                 .toList();
 
         // 확인용 추가 행이 아닌, 실제 반환한 마지막 행을 다음 커서로 사용
         RecruitmentCursorDto nextCursor = hasNext
-                ? RecruitmentCursorDto.from(selectedRows.getLast().getRecruitment()) : null;
+                ? RecruitmentCursorDto.from(selectedRows.getLast().getRecruitment(), sort) : null;
 
         return RecruitmentListResponseDto.builder()
                 .items(items)
@@ -190,10 +199,14 @@ public class RecruitmentService {
     }
 
 
-    // 커서는 두 값 모두 생략하거나 모두 전달. 잘못된 값은 DB 조회 전에 거부
-    private void validateCursorRequest(LocalDateTime cursorCreatedAt, Long cursorId, int size) {
-        if (size < 1 || size > MAX_PAGE_SIZE
-                || (cursorCreatedAt == null) != (cursorId == null)
+    // 정렬별 시각과 ID를 함께 전달. 정렬이 다른 커서를 섞으면 거부
+    private void validateCursorRequest(RecruitmentSort sort, LocalDateTime cursorCreatedAt,
+                                       LocalDateTime cursorDeadlineAt, Long cursorId, int size) {
+        LocalDateTime cursorTime = sort == RecruitmentSort.CLOSING_SOON ? cursorDeadlineAt : cursorCreatedAt;
+        if (sort == null || size < 1 || size > MAX_PAGE_SIZE
+                || (sort == RecruitmentSort.LATEST && cursorDeadlineAt != null)
+                || (sort == RecruitmentSort.CLOSING_SOON && cursorCreatedAt != null)
+                || (cursorTime == null) != (cursorId == null)
                 || (cursorId != null && cursorId <= 0)) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
@@ -254,7 +267,8 @@ public class RecruitmentService {
         return RecruitmentDetailResponseDto.from(
                 recruitment,
                 RecruitmentParticipationView.MINE,
-                null
+                null,
+                recruitmentBookmarksRepository.existsByUser_IdAndRecruitment_Id(userId, recruitmentId)
                 );
     }
 
@@ -299,7 +313,8 @@ public class RecruitmentService {
         return RecruitmentDetailResponseDto.from(
                 recruitment,
                 RecruitmentParticipationView.MINE,
-                null
+                null,
+                recruitmentBookmarksRepository.existsByUser_IdAndRecruitment_Id(userId, recruitmentId)
         );
 
     }
@@ -336,7 +351,8 @@ public class RecruitmentService {
         return RecruitmentDetailResponseDto.from(
                 recruitment,
                 RecruitmentParticipationView.MINE,
-                null
+                null,
+                recruitmentBookmarksRepository.existsByUser_IdAndRecruitment_Id(userId, recruitmentId)
         );
     }
 
@@ -374,7 +390,8 @@ public class RecruitmentService {
         return RecruitmentDetailResponseDto.from(
                 recruitment,
                 RecruitmentParticipationView.MINE,
-                null
+                null,
+                recruitmentBookmarksRepository.existsByUser_IdAndRecruitment_Id(userId, recruitmentId)
         );
     }
 
@@ -411,7 +428,8 @@ public class RecruitmentService {
         return RecruitmentDetailResponseDto.from(
                 recruitment,
                 RecruitmentParticipationView.MINE,
-                null
+                null,
+                recruitmentBookmarksRepository.existsByUser_IdAndRecruitment_Id(userId, recruitmentId)
         );
 
     }

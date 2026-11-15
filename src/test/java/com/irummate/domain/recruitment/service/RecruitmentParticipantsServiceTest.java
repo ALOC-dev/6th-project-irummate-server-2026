@@ -4,6 +4,7 @@ import com.irummate.domain.recruitment.dto.RecruitmentParticipantRemoveRequestDt
 import com.irummate.domain.recruitment.entity.*;
 import com.irummate.domain.recruitment.repository.RecruitmentParticipantsRepository;
 import com.irummate.domain.recruitment.repository.RecruitmentsRepository;
+import com.irummate.domain.recruitment.repository.RecruitmentBookmarksRepository;
 import com.irummate.domain.user.entity.Users;
 import com.irummate.domain.user.repository.UsersRepository;
 import com.irummate.global.exception.BusinessException;
@@ -30,7 +31,7 @@ class RecruitmentParticipantsServiceTest {
     private final RecruitmentParticipantsRepository participants = mock(RecruitmentParticipantsRepository.class);
     private final HashIdsUtils hashIds = new HashIdsUtils("recruitment-participants-test", "8");
     private final RecruitmentParticipationService service = new RecruitmentParticipationService(
-            recruitments, participants, mock(UsersRepository.class), hashIds);
+            recruitments, participants, mock(UsersRepository.class), hashIds, mock(RecruitmentBookmarksRepository.class));
     private final LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
     private final Users author = user(1L);
     private final Users member = user(2L);

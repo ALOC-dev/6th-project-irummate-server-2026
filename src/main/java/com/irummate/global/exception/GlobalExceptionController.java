@@ -23,13 +23,13 @@ import java.util.List;
 public class GlobalExceptionController {
 
     // 요청 관리 Handler
-    // 공지 API의 JSON/쿼리 오류와 모집 목록의 쿼리 형식 오류를 400으로 처리
+    // 공지 API의 JSON/쿼리 오류와 모집·즐겨찾기 목록의 쿼리 형식 오류를 400으로 처리
     @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class})
     public ResponseEntity<GlobalApiResponse<?>> handleInputFormat(Exception e, HttpServletRequest request) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
         boolean notice = "/api/notices".equals(path) || "/internal/notices".equals(path);
         boolean recruitmentListQuery = "GET".equals(request.getMethod())
-                && "/api/recruitments".equals(path)
+                && ("/api/recruitments".equals(path) || "/api/recruitments/bookmarks/me".equals(path))
                 && e instanceof MethodArgumentTypeMismatchException;
         if (!notice && !recruitmentListQuery) {
             return handleException(e);

@@ -1,5 +1,6 @@
 package com.irummate.domain.recruitment.service;
 
+import com.irummate.domain.recruitment.dto.RecruitmentSort;
 import com.irummate.domain.recruitment.dto.RecruitmentDetailResponseDto;
 import com.irummate.domain.recruitment.dto.RecruitmentLeaveResponseDto;
 import com.irummate.domain.recruitment.dto.RecruitmentParticipationView;
@@ -7,6 +8,7 @@ import com.irummate.domain.recruitment.dto.RecruitmentResponseDto;
 import com.irummate.domain.recruitment.entity.*;
 import com.irummate.domain.recruitment.repository.RecruitmentParticipantsRepository;
 import com.irummate.domain.recruitment.repository.RecruitmentsRepository;
+import com.irummate.domain.recruitment.repository.RecruitmentBookmarksRepository;
 import com.irummate.domain.user.entity.Users;
 import com.irummate.domain.user.repository.UsersRepository;
 import com.irummate.global.util.HashIdsUtils;
@@ -14,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -33,9 +36,10 @@ class RecruitmentParticipationResponseTest {
     private final RecruitmentsRepository recruitments = mock(RecruitmentsRepository.class);
     private final RecruitmentParticipantsRepository participants = mock(RecruitmentParticipantsRepository.class);
     private final UsersRepository users = mock(UsersRepository.class);
-    private final RecruitmentService service = new RecruitmentService(recruitments, participants, users);
+    private final RecruitmentBookmarksRepository bookmarks = mock(RecruitmentBookmarksRepository.class);
+    private final RecruitmentService service = new RecruitmentService(recruitments, participants, users, bookmarks);
     private final RecruitmentParticipationService participationService =
-            new RecruitmentParticipationService(recruitments, participants, users, mock(HashIdsUtils.class));
+            new RecruitmentParticipationService(recruitments, participants, users, mock(HashIdsUtils.class), bookmarks);
     private final Users viewer = user(2L);
 
     @ParameterizedTest
@@ -45,6 +49,8 @@ class RecruitmentParticipationResponseTest {
         RecruitmentParticipants participant = participant(recruitment, expected);
         RecruitmentsRepository.RecruitmentListRow row = mock(RecruitmentsRepository.RecruitmentListRow.class);
         when(row.getRecruitment()).thenReturn(recruitment);
+        when(row.getAuthorId()).thenReturn(recruitment.getAuthor().getId());
+        when(row.getAuthorNickname()).thenReturn(recruitment.getAuthor().getNickname());
         when(row.getParticipantStatus()).thenReturn(participant == null ? null : participant.getStatus());
         when(recruitments.findRecruitmentList(2L, null, RecruitmentVisibility.VISIBLE, null, null, PageRequest.of(0, 11)))
                 .thenReturn(List.of(row));
@@ -52,7 +58,7 @@ class RecruitmentParticipationResponseTest {
         when(recruitments.findById(11L)).thenReturn(Optional.of(recruitment));
         when(participants.findByRecruitment_IdAndUser_Id(11L, 2L)).thenReturn(Optional.ofNullable(participant));
 
-        RecruitmentResponseDto list = service.getRecruitments(2L, null, null, null, 10).getItems().getFirst();
+        RecruitmentResponseDto list = service.getRecruitments(2L, null, RecruitmentSort.LATEST, null, null, null, 10).getItems().getFirst();
         RecruitmentDetailResponseDto detail = service.getRecruitment(2L, 11L);
 
         assertEquals(expected, list.getParticipating());
@@ -96,6 +102,53 @@ class RecruitmentParticipationResponseTest {
     }
 
     @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void listAndDetailReturnCurrentUsersBookmarkFlag(boolean bookmarked) {
+        Recruitments recruitment = recruitment(user(1L));
+        var row = mock(RecruitmentsRepository.RecruitmentListRow.class);
+        when(row.getRecruitment()).thenReturn(recruitment);
+        when(row.getAuthorId()).thenReturn(1L);
+        when(row.isBookmarked()).thenReturn(bookmarked);
+        when(recruitments.findRecruitmentList(2L, null, RecruitmentVisibility.VISIBLE, null, null, PageRequest.of(0, 11)))
+                .thenReturn(List.of(row));
+        when(users.findById(2L)).thenReturn(Optional.of(viewer));
+        when(recruitments.findById(11L)).thenReturn(Optional.of(recruitment));
+        when(bookmarks.existsByUser_IdAndRecruitment_Id(2L, 11L)).thenReturn(bookmarked);
+
+        var list = service.getRecruitments(2L, null, RecruitmentSort.LATEST, null, null, null, 10).getItems().getFirst();
+        verifyNoInteractions(bookmarks);
+        var detail = service.getRecruitment(2L, 11L);
+
+        assertEquals(bookmarked, list.isBookmarked());
+        assertEquals(bookmarked, detail.isBookmarked());
+        JsonMapper mapper = JsonMapper.builder().build();
+        assertEquals(bookmarked, mapper.readValue(mapper.writeValueAsString(list), Map.class).get("bookmarked"));
+        assertEquals(bookmarked, mapper.readValue(mapper.writeValueAsString(detail), Map.class).get("bookmarked"));
+        verify(bookmarks).existsByUser_IdAndRecruitment_Id(2L, 11L);
+    }
+
+    @Test
+    void historyLoadsBookmarkFlagsOnceForWholePageIncludingMaskedRows() {
+        Recruitments visible = recruitment(user(1L));
+        Recruitments hidden = recruitment(user(1L));
+        ReflectionTestUtils.setField(hidden, "id", 12L);
+        ReflectionTestUtils.setField(hidden, "visibility", RecruitmentVisibility.HIDDEN);
+        when(participants.findAllByUser_IdOrderByJoinedAtDescIdDesc(2L, PageRequest.of(0, 10)))
+                .thenReturn(new PageImpl<>(List.of(participant(visible, RecruitmentParticipationView.JOINED),
+                        participant(hidden, RecruitmentParticipationView.REMOVED))));
+        when(bookmarks.findBookmarkedRecruitmentIds(2L, List.of(11L, 12L))).thenReturn(List.of(12L));
+
+        var response = participationService.getMyParticipation(2L, 0, 10);
+
+        assertFalse(response.getFirst().isBookmarked());
+        assertTrue(response.getLast().isBookmarked());
+        assertEquals("숨겨진 게시글입니다.", response.getLast().getTitle());
+        assertNull(response.getLast().getAuthorId());
+        verify(bookmarks).findBookmarkedRecruitmentIds(2L, List.of(11L, 12L));
+        verifyNoMoreInteractions(bookmarks);
+    }
+
+    @ParameterizedTest
     @CsvSource({
             "OPEN,VISIBLE,3,5,1,2,true",
             "CLOSED,VISIBLE,3,5,1,2,false",
@@ -117,8 +170,8 @@ class RecruitmentParticipationResponseTest {
         ReflectionTestUtils.setField(recruitment, "deadlineAt", now.plusDays(deadlineDays));
         ReflectionTestUtils.setField(recruitment, "activityAt", now.plusDays(activityDays));
 
-        assertEquals(expected, RecruitmentResponseDto.from(recruitment, RecruitmentParticipationView.NONE).isJoinable());
-        assertEquals(expected, RecruitmentDetailResponseDto.from(recruitment, RecruitmentParticipationView.NONE, null)
+        assertEquals(expected, RecruitmentResponseDto.from(recruitment, RecruitmentParticipationView.NONE, false).isJoinable());
+        assertEquals(expected, RecruitmentDetailResponseDto.from(recruitment, RecruitmentParticipationView.NONE, null, false)
                 .isJoinable());
     }
 
@@ -132,8 +185,8 @@ class RecruitmentParticipationResponseTest {
         JsonMapper mapper = JsonMapper.builder().build();
 
         List<Object> responses = List.of(
-                RecruitmentResponseDto.from(recruitment, RecruitmentParticipationView.LEFT),
-                RecruitmentDetailResponseDto.from(recruitment, RecruitmentParticipationView.LEFT, null), leave);
+                RecruitmentResponseDto.from(recruitment, RecruitmentParticipationView.LEFT, false),
+                RecruitmentDetailResponseDto.from(recruitment, RecruitmentParticipationView.LEFT, null, false), leave);
         for (Object response : responses) {
             Map<?, ?> json = mapper.readValue(mapper.writeValueAsString(response), Map.class);
             assertEquals("LEFT", json.get("participating"));

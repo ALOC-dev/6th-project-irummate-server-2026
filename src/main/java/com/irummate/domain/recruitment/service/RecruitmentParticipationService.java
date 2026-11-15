@@ -4,6 +4,7 @@ import com.irummate.domain.recruitment.dto.*;
 import com.irummate.domain.recruitment.entity.*;
 import com.irummate.domain.recruitment.repository.RecruitmentParticipantsRepository;
 import com.irummate.domain.recruitment.repository.RecruitmentsRepository;
+import com.irummate.domain.recruitment.repository.RecruitmentBookmarksRepository;
 import com.irummate.domain.user.entity.Users;
 import com.irummate.domain.user.repository.UsersRepository;
 import com.irummate.global.exception.BusinessException;
@@ -19,6 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
 
 @Service
 @RequiredArgsConstructor
@@ -30,6 +33,7 @@ public class RecruitmentParticipationService {
     private final RecruitmentParticipantsRepository recruitmentParticipantsRepository;
     private final UsersRepository usersRepository;
     private final HashIdsUtils hashIdsUtils;
+    private final RecruitmentBookmarksRepository recruitmentBookmarksRepository;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -169,9 +173,16 @@ public class RecruitmentParticipationService {
     ) {
         validatePageRequest(page, size);
 
-        List<RecruitmentResponseDto> myParticipants = recruitmentParticipantsRepository
+        var participations = recruitmentParticipantsRepository
                 .findAllByUser_IdOrderByJoinedAtDescIdDesc(userId, PageRequest.of(page, size))
-                .stream()
+                .getContent();
+
+        // 글마다 조회하지 않고 현재 페이지의 즐겨찾기만 한 번에 조회
+        Set<Long> bookmarkedIds = participations.isEmpty() ? Set.of() : new HashSet<>(
+                recruitmentBookmarksRepository.findBookmarkedRecruitmentIds(userId,
+                        participations.stream().map(participant -> participant.getRecruitment().getId()).toList()));
+
+        List<RecruitmentResponseDto> myParticipants = participations.stream()
                 .map(participant ->{
                     Recruitments recruitment = participant.getRecruitment();
 
@@ -187,10 +198,11 @@ public class RecruitmentParticipationService {
                                 .visibility(RecruitmentVisibility.HIDDEN)
                                 .participating(participating)
                                 .joinable(false)
+                                .bookmarked(bookmarkedIds.contains(recruitment.getId()))
                                 .build();
                     }
 
-                    return RecruitmentResponseDto.from(recruitment, participating);
+                    return RecruitmentResponseDto.from(recruitment, participating, bookmarkedIds.contains(recruitment.getId()));
                 })
                 .toList();
 

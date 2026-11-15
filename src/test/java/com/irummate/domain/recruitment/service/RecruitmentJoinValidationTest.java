@@ -3,6 +3,7 @@ package com.irummate.domain.recruitment.service;
 import com.irummate.domain.recruitment.entity.*;
 import com.irummate.domain.recruitment.repository.RecruitmentParticipantsRepository;
 import com.irummate.domain.recruitment.repository.RecruitmentsRepository;
+import com.irummate.domain.recruitment.repository.RecruitmentBookmarksRepository;
 import com.irummate.domain.user.entity.Users;
 import com.irummate.domain.user.repository.UsersRepository;
 import com.irummate.global.exception.BusinessException;
@@ -31,7 +32,7 @@ class RecruitmentJoinValidationTest {
     private final UsersRepository users = mock(UsersRepository.class);
     private final EntityManager entityManager = mock(EntityManager.class);
     private final RecruitmentParticipationService service =
-            new RecruitmentParticipationService(recruitments, participants, users, mock(HashIdsUtils.class));
+            new RecruitmentParticipationService(recruitments, participants, users, mock(HashIdsUtils.class), mock(RecruitmentBookmarksRepository.class));
     private final LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
     private final Users viewer = user(2L);
 

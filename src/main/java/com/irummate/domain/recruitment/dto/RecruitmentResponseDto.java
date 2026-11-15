@@ -53,10 +53,25 @@ public class RecruitmentResponseDto {
     // 현재 로그인 사용자와 모집글의 관계
     private final RecruitmentParticipationView participating;
     private final boolean joinable;
+    private final boolean bookmarked;
 
     public static RecruitmentResponseDto from(
             Recruitments recruitment,
-            RecruitmentParticipationView participating
+            RecruitmentParticipationView participating,
+            boolean bookmarked
+    ) {
+        return from(recruitment, participating, recruitment.getAuthor().getId(),
+                recruitment.getAuthor().getNickname(), recruitment.getAuthor().getProfileImageUrl(), bookmarked);
+    }
+
+    // 작성자 필드를 함께 조회한 경우 Users 추가 조회 없이 응답 생성
+    public static RecruitmentResponseDto from(
+            Recruitments recruitment,
+            RecruitmentParticipationView participating,
+            Long authorId,
+            String authorNickname,
+            String authorProfileImageUrl,
+            boolean bookmarked
     ) {
         LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
         boolean joinable = participating.isJoinable(recruitment, now);
@@ -75,11 +90,9 @@ public class RecruitmentResponseDto {
                                 : null
                 )
 
-                .authorId(recruitment.getAuthor().getId())
-                .authorNickname(recruitment.getAuthor().getNickname())
-                .authorProfileImageUrl(
-                        recruitment.getAuthor().getProfileImageUrl()
-                )
+                .authorId(authorId)
+                .authorNickname(authorNickname)
+                .authorProfileImageUrl(authorProfileImageUrl)
 
                 .place(recruitment.getPlace())
                 .activityAt(recruitment.getActivityAt())
@@ -96,6 +109,7 @@ public class RecruitmentResponseDto {
                 .full(full)
                 .participating(participating)
                 .joinable(joinable)
+                .bookmarked(bookmarked)
 
                 .createdAt(recruitment.getCreatedAt())
                 .build();

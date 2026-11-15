@@ -8,6 +8,7 @@ import com.irummate.domain.recruitment.entity.RecruitmentVisibility;
 import com.irummate.domain.recruitment.entity.Recruitments;
 import com.irummate.domain.recruitment.repository.RecruitmentParticipantsRepository;
 import com.irummate.domain.recruitment.repository.RecruitmentsRepository;
+import com.irummate.domain.recruitment.repository.RecruitmentBookmarksRepository;
 import com.irummate.domain.user.entity.Users;
 import com.irummate.domain.user.repository.UsersRepository;
 import com.irummate.global.exception.BusinessException;
@@ -67,7 +68,7 @@ class RecruitmentTextTest {
         RecruitmentsRepository recruitments = mock(RecruitmentsRepository.class);
         UsersRepository users = mock(UsersRepository.class);
         RecruitmentService service = new RecruitmentService(recruitments,
-                mock(RecruitmentParticipantsRepository.class), users);
+                mock(RecruitmentParticipantsRepository.class), users, mock(RecruitmentBookmarksRepository.class));
         when(users.findById(1L)).thenReturn(Optional.of(Users.builder().nickname("작성자").build()));
         when(recruitments.save(any(Recruitments.class))).thenAnswer(invocation -> {
             Recruitments saved = invocation.getArgument(0);

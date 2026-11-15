@@ -107,9 +107,9 @@ class RecruitmentPriceTest {
         Recruitments recruitment = recruitment();
         recruitment.configurePrice(RecruitmentPriceType.SPLIT, 20000);
         assertEquals(5000, RecruitmentResponseDto.from(recruitment,
-                RecruitmentParticipationView.NONE).getEstimatedFee());
+                RecruitmentParticipationView.NONE, false).getEstimatedFee());
         assertEquals(6667, RecruitmentResponseDto.from(recruitment,
-                RecruitmentParticipationView.LEFT).getEstimatedFee());
+                RecruitmentParticipationView.LEFT, false).getEstimatedFee());
         RecruitmentResponseDto hidden = RecruitmentResponseDto.builder()
                 .visibility(RecruitmentVisibility.HIDDEN).title("숨겨진 게시글입니다.").build();
         assertNull(hidden.getAmount());

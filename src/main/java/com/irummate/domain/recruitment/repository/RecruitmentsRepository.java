@@ -3,6 +3,7 @@ package com.irummate.domain.recruitment.repository;
 import com.irummate.domain.recruitment.entity.RecruitmentParticipantStatus;
 import com.irummate.domain.recruitment.entity.RecruitmentCategory;
 import com.irummate.domain.recruitment.entity.RecruitmentVisibility;
+import com.irummate.domain.recruitment.entity.RecruitmentStatus;
 import com.irummate.domain.recruitment.entity.Recruitments;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Pageable;
@@ -32,16 +33,23 @@ public interface RecruitmentsRepository extends JpaRepository<Recruitments, Long
 
 
 
-    // 커서보다 오래된 글만 조회. List로 반환해 전체 건수 조회는 실행하지 않음
+    // 커서보다 오래된 글만 조회. 내 참여·즐겨찾기와 작성자 필드를 함께 조회
     // 두 커서 값은 함께 검증되므로, 커서 유무는 PostgreSQL에서 null 타입이 명확한 ID로 판단
     @Query("""
         select r as recruitment,
-               p.status as participantStatus
+               a.id as authorId,
+               a.nickname as authorNickname,
+               a.profileImageUrl as authorProfileImageUrl,
+               p.status as participantStatus,
+               case when b.id is not null then true else false end as bookmarked
         from Recruitments r
-        join fetch r.author a
+        join r.author a
         left join RecruitmentParticipants p
             on p.recruitment = r
             and p.user.id = :userId
+        left join RecruitmentBookmarks b
+            on b.recruitment = r
+            and b.user.id = :userId
         where r.visibility = :visibility
           and (:category is null or r.category = :category)
           and (
@@ -60,6 +68,50 @@ public interface RecruitmentsRepository extends JpaRepository<Recruitments, Long
             Pageable pageable
     );
 
+
+    // 24시간 이내 마감 또는 정원 80% 이상인 모집 중 글만 선별한 뒤 페이징
+    // 인원은 작성자 포함. 나눗셈 대신 long 곱셈으로 비율과 큰 정원을 정확하게 비교
+    @Query("""
+        select r as recruitment,
+               a.id as authorId,
+               a.nickname as authorNickname,
+               a.profileImageUrl as authorProfileImageUrl,
+               p.status as participantStatus,
+               case when b.id is not null then true else false end as bookmarked
+        from Recruitments r
+        join r.author a
+        left join RecruitmentParticipants p
+            on p.recruitment = r and p.user.id = :userId
+        left join RecruitmentBookmarks b
+            on b.recruitment = r and b.user.id = :userId
+        where r.visibility = :visibility
+          and r.status = :status
+          and r.deadlineAt > :now
+          and r.activityAt > :now
+          and r.nowParticipants < r.maxParticipants
+          and (:category is null or r.category = :category)
+          and (
+              r.deadlineAt <= :closingBefore
+              or cast(r.nowParticipants as long) * 100 >= cast(r.maxParticipants as long) * 80
+          )
+          and (
+              :cursorId is null
+              or r.deadlineAt > :cursorDeadlineAt
+              or (r.deadlineAt = :cursorDeadlineAt and r.id < :cursorId)
+          )
+        order by r.deadlineAt asc, r.id desc
+        """)
+    List<RecruitmentListRow> findClosingSoonRecruitmentList(
+            @Param("userId") Long userId,
+            @Param("category") RecruitmentCategory category,
+            @Param("visibility") RecruitmentVisibility visibility,
+            @Param("status") RecruitmentStatus status,
+            @Param("now") LocalDateTime now,
+            @Param("closingBefore") LocalDateTime closingBefore,
+            @Param("cursorDeadlineAt") LocalDateTime cursorDeadlineAt,
+            @Param("cursorId") Long cursorId,
+            Pageable pageable
+    );
 
     // 활동 시작 시각이 지난 글을 일괄 종료. 다른 요청이 잠근 글은 다음 실행에서 처리
     @Modifying
@@ -114,6 +166,10 @@ public interface RecruitmentsRepository extends JpaRepository<Recruitments, Long
 
     public interface RecruitmentListRow {
         Recruitments getRecruitment();
+        Long getAuthorId();
+        String getAuthorNickname();
+        String getAuthorProfileImageUrl();
         RecruitmentParticipantStatus getParticipantStatus();
+        boolean isBookmarked();
     }
 }
