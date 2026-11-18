@@ -19,6 +19,7 @@ import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
 import com.irummate.global.jwt.JwtTokenProvider;
 import com.irummate.global.util.HashIdsUtils;
+import com.irummate.global.util.SemesterUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
@@ -168,8 +169,9 @@ public class AuthService {
             return AuthStatusResponseDto.builder().authenticated(false).build();
         }
 
-        Certification latestCertification = certificationRepository
-                .findTopByUser_IdOrderByCreatedAtDesc(user.getId())
+        // 로그인 상태에도 현재 학기의 인증 상태만 반영
+        Certification currentCertification = certificationRepository
+                .findByUser_IdAndSemester(user.getId(), SemesterUtils.currentSemester())
                 .orElse(null);
 
         return AuthStatusResponseDto.builder()
@@ -180,7 +182,7 @@ public class AuthService {
                         .role(user.getRole().name())
                         .status(user.getStatus().name())
                         .certificationStatus(
-                                currentCertificationStatus(latestCertification)
+                                currentCertificationStatus(currentCertification)
                         )
                         .detailsCompleted(userDetailsRepository.existsById(user.getId()))
                         .surveyCompleted(isSurveyCompleted(userId))

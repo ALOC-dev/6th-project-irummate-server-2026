@@ -26,10 +26,10 @@ public class MatchingConfigController {
     }
 
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "매칭 날짜 조회 성공"),
+            @ApiResponse(responseCode = "200", description = "설문 및 매칭 일정 조회 성공"),
             @ApiResponse(responseCode = "401", description = "인증이 필요합니다."),
-            @ApiResponse(responseCode = "403", description = "관리자 권한이 필요합니다."),
-            @ApiResponse(responseCode = "404", description = "매칭 날짜가 설정되어 있지 않습니다.")
+            @ApiResponse(responseCode = "403", description = "관리자 권한이 없거나 정지 또는 탈퇴한 계정입니다."),
+            @ApiResponse(responseCode = "404", description = "사용자를 찾을 수 없거나 설문 및 매칭 일정이 설정되어 있지 않습니다.")
     })
     @RequiresAuth(roles = AuthRole.ADMIN)
     @GetMapping("/match/config")
@@ -41,10 +41,11 @@ public class MatchingConfigController {
     }
 
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "매칭 날짜 설정 성공"),
-            @ApiResponse(responseCode = "400", description = "요청 값이 올바르지 않습니다. 시작일과 종료일은 필수이며, 시작일은 종료일보다 늦을 수 없습니다."),
+            @ApiResponse(responseCode = "200", description = "설문 및 매칭 일정 설정 성공"),
+            @ApiResponse(responseCode = "400", description = "설문 시작일, 매칭 시작일, 매칭 종료일은 필수이며 해당 순서대로 같거나 이후 날짜여야 합니다."),
             @ApiResponse(responseCode = "401", description = "인증이 필요합니다."),
-            @ApiResponse(responseCode = "403", description = "관리자 권한이 필요합니다.")
+            @ApiResponse(responseCode = "403", description = "관리자 권한이 없거나 정지 또는 탈퇴한 계정입니다."),
+            @ApiResponse(responseCode = "404", description = "사용자를 찾을 수 없습니다.")
     })
     @RequiresAuth(roles = AuthRole.ADMIN)
     @PatchMapping("/match/config")

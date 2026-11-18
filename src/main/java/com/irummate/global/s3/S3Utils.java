@@ -73,6 +73,7 @@ public class S3Utils {
                 .bucket(bucket)
                 .key(key)
                 .contentType(contentType)
+                .ifNoneMatch("*")
                 .build();
 
         PutObjectPresignRequest presignRequest = PutObjectPresignRequest.builder()

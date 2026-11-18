@@ -20,13 +20,17 @@ public class MatchingDtoMapper {
             return MatchCardStatus.CLOSED;
         }
 
-        if (myStatus == MatchStatus.FINAL_CONFIRMED
-                || otherStatus == MatchStatus.FINAL_CONFIRMED) {
-            return MatchCardStatus.CONFIRM_PENDING;
+        if (myStatus == MatchStatus.REJECTED) {
+            return MatchCardStatus.REJECTED_BY_ME;
         }
 
         if (otherStatus == MatchStatus.REJECTED) {
             return MatchCardStatus.REJECTED_BY_OTHER;
+        }
+
+        if (myStatus == MatchStatus.FINAL_CONFIRMED
+                || otherStatus == MatchStatus.FINAL_CONFIRMED) {
+            return MatchCardStatus.CONFIRM_PENDING;
         }
 
         if (myStatus == MatchStatus.HEART && otherStatus == MatchStatus.HEART) {

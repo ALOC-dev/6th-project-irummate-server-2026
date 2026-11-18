@@ -15,11 +15,15 @@ import com.irummate.global.exception.ErrorCode;
 import com.irummate.global.s3.S3Utils;
 import com.irummate.global.util.HashIdsUtils;
 import com.irummate.global.util.SemesterUtils;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 @Service
@@ -33,10 +37,16 @@ public class CertificationService {
     private final UserDetailsRepository userDetailsRepository;
     private final HashIdsUtils hashIdsUtils;
     private final S3Utils s3Utils;
+    private final Clock clock;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Transactional
     public CertificationResponseDto createCertification(Long userId, CertificationRequestDto requestDto) {
-        Users user = usersRepository.findById(userId)
+        // 사용자 행 잠금 후 인증 기록을 조회해 최초 중복 생성 방지
+        entityManager.createNativeQuery("SET LOCAL lock_timeout = '1500ms'").executeUpdate();
+        Users user = usersRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         validateCertificationEligibility(userId, user);
@@ -52,11 +62,13 @@ public class CertificationService {
             Certification certification = existingCertification.get();
             String previousImageKey = certification.getImageKey();
             certification.resubmit(requestDto.getImageKey());
+            // 동시 수정 충돌을 확인한 뒤 이전 이미지 정리
+            certificationRepository.flush();
             deletePreviousImage(previousImageKey, requestDto.getImageKey());
 
             return CertificationResponseDto.from(certification,
                     hashIdsUtils.encode(user.getId()),
-                    hashIdsUtils.encode(certification.getId()));
+                    certification.getPublicId());
         }
 
         Certification certification = Certification.builder()
@@ -66,10 +78,10 @@ public class CertificationService {
                 .certificationStatus(CertificationStatus.PENDING)
                 .build();
 
-        Certification savedCertification = certificationRepository.save(certification);
+        Certification savedCertification = certificationRepository.saveAndFlush(certification);
         return CertificationResponseDto.from(savedCertification,
                 hashIdsUtils.encode(user.getId()),
-                hashIdsUtils.encode(savedCertification.getId()));
+                savedCertification.getPublicId());
     }
 
     @Transactional
@@ -77,16 +89,18 @@ public class CertificationService {
         Users user = usersRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
-        Optional<Certification> latest = certificationRepository.findTopByUser_IdOrderByCreatedAtDesc(userId);
-        if (latest.isEmpty()) {
+        // 현재 학기 기록이 없으면 미인증 상태로 응답
+        Optional<Certification> currentCertification = certificationRepository
+                .findByUser_IdAndSemester(userId, SemesterUtils.currentSemester());
+        if (currentCertification.isEmpty()) {
             return CertificationStatusResponseDto.none(hashIdsUtils.encode(user.getId()));
         }
-        Certification certification = latest.get();
+        Certification certification = currentCertification.get();
         expireIfNecessary(certification);
 
         return CertificationStatusResponseDto.from(certification,
                 hashIdsUtils.encode(user.getId()),
-                hashIdsUtils.encode(certification.getId()));
+                certification.getPublicId());
     }
 
     private void validateCertificationEligibility(Long userId, Users user) {
@@ -102,7 +116,7 @@ public class CertificationService {
     private void expireIfNecessary(Certification certification) {
         if (certification.getCertificationStatus() == CertificationStatus.APPROVED
                 && certification.getExpiresAt() != null
-                && !certification.getExpiresAt().isAfter(java.time.LocalDateTime.now())) {
+                && !certification.getExpiresAt().isAfter(LocalDateTime.now(clock))) {
             certification.expire();
         }
     }

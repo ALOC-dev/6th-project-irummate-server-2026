@@ -1,6 +1,5 @@
 package com.irummate.domain.admin.dto;
 
-import com.irummate.domain.certification.entity.Certification;
 import com.irummate.domain.survey.entity.UserPreferences;
 import com.irummate.domain.user.entity.UserDetails;
 import com.irummate.domain.user.entity.Users;
@@ -31,7 +30,7 @@ public class AdminUserDetailResponseDto {
 
     public static AdminUserDetailResponseDto from(Users user,
                                                   String userId,
-                                                  Certification latestCertification) {
+                                                  String certificationStatus) {
         UserDetails details = user.getUserDetails();
         UserPreferences preferences = user.getUserPreferences();
 
@@ -48,7 +47,7 @@ public class AdminUserDetailResponseDto {
                 user.getProfileImageUrl(),
                 user.getRole().name(),
                 user.getStatus().name(),
-                latestCertification == null ? null : latestCertification.getCertificationStatus().name(),
+                certificationStatus,
                 preferences != null && Boolean.TRUE.equals(preferences.getIsCompleted()),
                 user.getCreatedAt()
         );

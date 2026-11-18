@@ -275,6 +275,8 @@ public interface MatchRepository extends JpaRepository<MatchRequests, Long> {
     // 자기 자신이 포함된 match를 조회
     // 단, 내가 아직 추천받지 않았거나(NONE) 내가 거절한(REJECTED) match는 조회 대상에서 제외
     // (상대방이 거절한 것은 포함)
+    // 현재 노출 가능한 MatchRequest와
+    // 오늘 사용자에게 추천됐던 모든 MatchRequest를 조회
     @Query("""
     SELECT DISTINCT mr
     FROM MatchRequests mr
@@ -288,16 +290,24 @@ public interface MatchRepository extends JpaRepository<MatchRequests, Long> {
         mr.userLow.id = :userId
         AND mr.userHigh.status = com.irummate.domain.user.entity.UserStatus.ACTIVE
         AND mr.userHigh.role = com.irummate.domain.user.entity.UserRole.USER
-        AND mr.userLowStatus <> com.irummate.domain.matching.entity.MatchStatus.CLOSED
-        AND mr.userHighStatus <> com.irummate.domain.matching.entity.MatchStatus.CLOSED
         AND (
-            mr.userLowStatus NOT IN (
-                com.irummate.domain.matching.entity.MatchStatus.NONE,
-                com.irummate.domain.matching.entity.MatchStatus.REJECTED
+            (
+                mr.userLowStatus <> com.irummate.domain.matching.entity.MatchStatus.CLOSED
+                AND mr.userHighStatus <> com.irummate.domain.matching.entity.MatchStatus.CLOSED
+                AND (
+                    mr.userLowStatus NOT IN (
+                        com.irummate.domain.matching.entity.MatchStatus.NONE,
+                        com.irummate.domain.matching.entity.MatchStatus.REJECTED
+                    )
+                    OR (
+                        mr.userLowStatus = com.irummate.domain.matching.entity.MatchStatus.NONE
+                        AND mr.userHighStatus = com.irummate.domain.matching.entity.MatchStatus.HEART
+                    )
+                )
             )
             OR (
-                mr.userLowStatus = com.irummate.domain.matching.entity.MatchStatus.NONE
-                AND mr.userHighStatus = com.irummate.domain.matching.entity.MatchStatus.HEART
+                mr.userLowRecommendedAt >= :startOfToday
+                AND mr.userLowRecommendedAt < :startOfTomorrow
             )
         )
     )
@@ -305,34 +315,65 @@ public interface MatchRepository extends JpaRepository<MatchRequests, Long> {
         mr.userHigh.id = :userId
         AND mr.userLow.status = com.irummate.domain.user.entity.UserStatus.ACTIVE
         AND mr.userLow.role = com.irummate.domain.user.entity.UserRole.USER
-        AND mr.userLowStatus <> com.irummate.domain.matching.entity.MatchStatus.CLOSED
-        AND mr.userHighStatus <> com.irummate.domain.matching.entity.MatchStatus.CLOSED
         AND (
-            mr.userHighStatus NOT IN (
-                com.irummate.domain.matching.entity.MatchStatus.NONE,
-                com.irummate.domain.matching.entity.MatchStatus.REJECTED
+            (
+                mr.userLowStatus <> com.irummate.domain.matching.entity.MatchStatus.CLOSED
+                AND mr.userHighStatus <> com.irummate.domain.matching.entity.MatchStatus.CLOSED
+                AND (
+                    mr.userHighStatus NOT IN (
+                        com.irummate.domain.matching.entity.MatchStatus.NONE,
+                        com.irummate.domain.matching.entity.MatchStatus.REJECTED
+                    )
+                    OR (
+                        mr.userHighStatus = com.irummate.domain.matching.entity.MatchStatus.NONE
+                        AND mr.userLowStatus = com.irummate.domain.matching.entity.MatchStatus.HEART
+                    )
+                )
             )
             OR (
-                mr.userHighStatus = com.irummate.domain.matching.entity.MatchStatus.NONE
-                AND mr.userLowStatus = com.irummate.domain.matching.entity.MatchStatus.HEART
+                mr.userHighRecommendedAt >= :startOfToday
+                AND mr.userHighRecommendedAt < :startOfTomorrow
             )
         )
     )
     ORDER BY mr.matchPercentage DESC
     """)
-    List<MatchRequests> findAllVisibleByUserId(@Param("userId") Long userId);
+    List<MatchRequests> findAllVisibleByUserId(
+            @Param("userId") Long userId,
+            @Param("startOfToday") LocalDateTime startOfToday,
+            @Param("startOfTomorrow") LocalDateTime startOfTomorrow
+    );
 
 
-    @Query("""
-    SELECT mr
-    FROM MatchRequests mr
-    WHERE mr.id <> :confirmedMatchRequestId
-    AND (
-        mr.userLow.id = :userId
-        OR mr.userHigh.id = :userId
-    )
-    """)
-    List<MatchRequests> findAllByUserIdExceptConfirmed(
+    // 최종 매칭 확정 시 해당 사용자의 다른 매칭들을 종료하는 쿼리
+    // 최종 확정된 MatchRequest는 제외하며 사용자의 상태만 CLOSED로 변경
+    // 여러 MatchRequest를 불러오지 않고 하나의 update 쿼리로 처리
+    @Modifying(flushAutomatically = true)
+    @Query(value = """
+    UPDATE match_requests mr
+    SET
+        user_low_status = CASE
+            WHEN mr.user_low_id = :userId
+            THEN 'CLOSED'
+            ELSE mr.user_low_status
+        END,
+        user_high_status = CASE
+            WHEN mr.user_high_id = :userId
+            THEN 'CLOSED'
+            ELSE mr.user_high_status
+        END
+    WHERE mr.match_request_id <> :confirmedMatchRequestId
+      AND (
+          mr.user_low_id = :userId
+          OR mr.user_high_id = :userId
+      )
+      AND (
+          (mr.user_low_id = :userId AND mr.user_low_status <> 'CLOSED')
+          OR
+          (mr.user_high_id = :userId AND mr.user_high_status <> 'CLOSED')
+      )
+    """, nativeQuery = true)
+    int closeOtherMatchRequestsForUser(
             @Param("userId") Long userId,
             @Param("confirmedMatchRequestId") Long confirmedMatchRequestId
     );
@@ -360,11 +401,36 @@ public interface MatchRepository extends JpaRepository<MatchRequests, Long> {
             @Param("userId2") Long userId2
     );
 
-    @Query("""
-    SELECT mr
-    FROM MatchRequests mr
-    WHERE mr.userLow.id = :userId
-    OR mr.userHigh.id = :userId
-    """)
-    List<MatchRequests> findAllByUserId(@Param("userId") Long userId);
+    // 정지 등의 사유로 해당 사용자의 진행 중인 매칭들을 종료하는 쿼리
+    // 양쪽 모두 최종 확정된 MatchRequest는 제외하며 사용자의 상태만 CLOSED로 변경
+    // 이미 CLOSED인 상태는 제외하고 하나의 update 쿼리로 처리
+    @Modifying(flushAutomatically = true)
+    @Query(value = """
+    UPDATE match_requests mr
+    SET
+        user_low_status = CASE
+            WHEN mr.user_low_id = :userId
+            THEN 'CLOSED'
+            ELSE mr.user_low_status
+        END,
+        user_high_status = CASE
+            WHEN mr.user_high_id = :userId
+            THEN 'CLOSED'
+            ELSE mr.user_high_status
+        END
+    WHERE (
+        mr.user_low_id = :userId
+        OR mr.user_high_id = :userId
+    )
+      AND NOT (
+          mr.user_low_status = 'FINAL_CONFIRMED'
+          AND mr.user_high_status = 'FINAL_CONFIRMED'
+      )
+      AND (
+          (mr.user_low_id = :userId AND mr.user_low_status <> 'CLOSED')
+          OR
+          (mr.user_high_id = :userId AND mr.user_high_status <> 'CLOSED')
+      )
+    """, nativeQuery = true)
+    int closeUnconfirmedMatchRequestsForUser(@Param("userId") Long userId);
 }

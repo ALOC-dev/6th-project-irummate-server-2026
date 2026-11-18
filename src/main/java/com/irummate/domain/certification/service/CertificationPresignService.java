@@ -1,5 +1,7 @@
 package com.irummate.domain.certification.service;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.irummate.domain.certification.dto.CertificationPresignRequestDto;
 import com.irummate.domain.certification.dto.CertificationPresignResponseDto;
 import com.irummate.domain.certification.entity.CertificationStatus;
@@ -13,12 +15,16 @@ import com.irummate.global.exception.ErrorCode;
 import com.irummate.global.s3.PresignedUrlResponse;
 import com.irummate.global.s3.S3Utils;
 import com.irummate.global.util.SemesterUtils;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.convert.DurationStyle;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.*;
+import java.util.ArrayDeque;
+import java.util.Deque;
 
 @Service
 @RequiredArgsConstructor
@@ -30,6 +36,28 @@ public class CertificationPresignService {
     private final UsersRepository usersRepository;
     private final UserDetailsRepository userDetailsRepository;
     private final CertificationRepository certificationRepository;
+    private final Clock clock;
+
+
+    @Value("${certification.upload-url.rate-limit.window}")
+    private String uploadRequestWindowValue;
+
+    @Value("${certification.upload-url.rate-limit.max-requests}")
+    private int maxUploadRequests;
+
+    private Duration uploadRequestWindow;
+    private Cache<Long, Deque<Instant>> uploadRequests;
+
+
+    @PostConstruct
+    private void initializeUploadRequestCache() {
+        uploadRequestWindow =
+                DurationStyle.detectAndParse(uploadRequestWindowValue);
+
+        uploadRequests = Caffeine.newBuilder()
+                .expireAfterAccess(uploadRequestWindow)
+                .build();
+    }
 
 
     public CertificationPresignResponseDto createUploadUrl(Long userId, CertificationPresignRequestDto requestDto) {
@@ -47,6 +75,10 @@ public class CertificationPresignService {
 
         String semester = SemesterUtils.currentSemester();
         ensureUploadUrlIssuable(userId, semester);
+
+
+        checkAndRecordUploadRequest(userId);
+
 
         String dirName = "certifications/" + semester + "/" + userId;
 
@@ -68,4 +100,34 @@ public class CertificationPresignService {
                     throw new BusinessException(ErrorCode.CERTIFICATION_ALREADY_EXISTS);
                 });
     }
+
+
+    // 사용자별 최근 발급 요청을 검사하고 기록
+    private void checkAndRecordUploadRequest(Long userId) {
+        uploadRequests.asMap().compute(userId, (key, requests) -> {
+            Deque<Instant> history = requests == null
+                    ? new ArrayDeque<>()
+                    : requests;
+
+            Instant now = clock.instant();
+            Instant cutoff = now.minus(uploadRequestWindow);
+
+            // 제한 시간을 지난 기록 제거
+            while (!history.isEmpty()
+                    && !history.peekFirst().isAfter(cutoff)) {
+                history.removeFirst();
+            }
+
+            if (history.size() >= maxUploadRequests) {
+                throw new BusinessException(
+                        ErrorCode.CERTIFICATION_UPLOAD_LIMIT_EXCEEDED
+                );
+            }
+
+            history.addLast(now);
+            return history;
+        });
+    }
+
+
 }
