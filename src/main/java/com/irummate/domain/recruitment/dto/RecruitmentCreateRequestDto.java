@@ -1,6 +1,7 @@
 package com.irummate.domain.recruitment.dto;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.irummate.domain.recruitment.entity.RecruitmentCategory;
 import com.irummate.domain.recruitment.entity.RecruitmentPriceType;
 import jakarta.validation.constraints.*;
@@ -16,6 +17,7 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor(onConstructor_ = @JsonCreator)
 @AllArgsConstructor
+@JsonIgnoreProperties("deadlineAt")
 public class RecruitmentCreateRequestDto {
 
     // 게시글 카테고리
@@ -31,15 +33,10 @@ public class RecruitmentCreateRequestDto {
     @Size(max = 255, message = "장소는 255자 이하여야 합니다.")
     private String place;
 
-    // 실제 활동 일시
+    // 활동까지 최소 1시간 필요. 모집 마감은 서버에서 활동 30분 전으로 계산
     @NotNull(message = "활동 일시는 필수입니다.")
     @Future(message = "활동 일시는 현재 시각 이후여야 합니다.")
     private LocalDateTime activityAt;
-
-    // 모집 마감 일시
-    @NotNull(message = "모집 마감 일시는 필수입니다.")
-    @Future(message = "모집 마감 일시는 현재 시각 이후여야 합니다.")
-    private LocalDateTime deadlineAt;
 
     // 작성자를 제외하고 모집할 인원
     @NotNull(message = "최대 모집 인원은 필수입니다.")

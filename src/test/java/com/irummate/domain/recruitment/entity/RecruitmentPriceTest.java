@@ -84,13 +84,13 @@ class RecruitmentPriceTest {
     void partialPriceUpdatePreservesOmittedValue() {
         Recruitments recruitment = recruitment();
         recruitment.configurePrice(RecruitmentPriceType.FIXED, 1000);
-        recruitment.update(null, null, null, null, null, RecruitmentPriceType.SPLIT, null, now);
+        recruitment.update(null, null, null, null, RecruitmentPriceType.SPLIT, null, now);
         assertEquals(1000, recruitment.getAmount());
         assertEquals(RecruitmentPriceType.SPLIT, recruitment.getPriceType());
-        recruitment.update(null, null, null, null, null, null, 20000, now);
+        recruitment.update(null, null, null, null, null, 20000, now);
         assertEquals(6667, recruitment.calculateEstimatedFee(false, now));
         assertThrows(BusinessException.class, () -> recruitment.update(
-                "변경 제목", null, null, null, null, null, 0, now));
+                "변경 제목", null, null, null, null, 0, now));
         assertNull(recruitment.getTitle());
         assertEquals(20000, recruitment.getAmount());
     }

@@ -155,18 +155,14 @@ public class RecruitmentService {
                 .orElseThrow(()->new BusinessException(ErrorCode.USER_NOT_FOUND));
 
 
-        // 모집 마감은 활동 시작보다 빨라야 함
-        if (!request.getDeadlineAt().isBefore(request.getActivityAt())) {
-            throw new BusinessException(ErrorCode.INVALID_RECRUITMENT_PERIOD);
-        }
-
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
 
         // 게시글 생성
         // 카테고리별 사용 attribute 다르기에 category에 따라 일부 attribute null값 적용
-        Recruitments recruitment = createRecruitmentEntity(user, request);
+        Recruitments recruitment = createRecruitmentEntity(user, request, now);
 
         // 게시글 작성자 참여
-        RecruitmentParticipants participant = RecruitmentParticipants.createHost(recruitment, user, LocalDateTime.now(ZoneId.of("Asia/Seoul")));
+        RecruitmentParticipants participant = RecruitmentParticipants.createHost(recruitment, user, now);
 
         // 게시글 DB에 저장
         Recruitments savedRecruitment = recruitmentsRepository.save(recruitment);
@@ -181,18 +177,19 @@ public class RecruitmentService {
     // 게시글 생성 용 DtoToEntity 함수
     private Recruitments createRecruitmentEntity(
             Users author,
-            RecruitmentCreateRequestDto request
+            RecruitmentCreateRequestDto request,
+            LocalDateTime now
     ) {
         Recruitments recruitment = Recruitments.builder()
                 .author(author)
                 .category(request.getCategory())
-                .activityAt(request.getActivityAt())
-                .deadlineAt(request.getDeadlineAt())
                 .maxParticipants(includeHostInCapacity(request.getMaxParticipants()))
                 .status(RecruitmentStatus.OPEN)
                 .visibility(RecruitmentVisibility.VISIBLE)
                 .nowParticipants(1)
                 .build();
+        // 활동까지 최소 1시간 확보. 모집 마감은 활동 30분 전으로 자동 계산
+        recruitment.configureSchedule(request.getActivityAt(), now);
         recruitment.configureText(request.getTitle(), request.getPlace());
         recruitment.configurePrice(request.getPriceType(), request.getAmount());
         return recruitment;
@@ -254,7 +251,6 @@ public class RecruitmentService {
                 request.getTitle(),
                 request.getPlace(),
                 request.getActivityAt(),
-                request.getDeadlineAt(),
                 request.getMaxParticipants() == null
                         ? null : includeHostInCapacity(request.getMaxParticipants()),
                 request.getPriceType(),

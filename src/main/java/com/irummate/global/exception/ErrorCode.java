@@ -19,7 +19,7 @@ public enum ErrorCode {
     EMPTY_CHAT_MESSAGE(HttpStatus.BAD_REQUEST, "채팅 메시지가 내용이 비어있습니다."),
     CHAT_MESSAGE_TOO_LONG(HttpStatus.BAD_REQUEST, "채팅 메시지는 500자를 초과할 수 없습니다"),
     INVALID_WEBSOCKET_DESTINATION(HttpStatus.BAD_REQUEST, "유효하지 않은 웹소켓 구독 주소입니다."),
-    INVALID_RECRUITMENT_PERIOD(HttpStatus.BAD_REQUEST, "모집 마감 일시는 활동 일시보다 이전이어야 합니다."),
+    INVALID_RECRUITMENT_PERIOD(HttpStatus.BAD_REQUEST, "활동 일시는 현재 시각으로부터 최소 1시간 이후여야 합니다."),
 
     // ── 401 ──
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증이 필요합니다."),
@@ -58,10 +58,12 @@ public enum ErrorCode {
     RECRUITMENT_PARTICIPANT_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 모집글의 참여자를 찾을 수 없습니다."),
 
     // ── 409 ──
+    UPDATE_CONFLICT(HttpStatus.CONFLICT, "요청한 데이터가 변경되었습니다. 다시 조회 후 시도해주세요."),
     LOCK_CONFLICT(HttpStatus.CONFLICT, "다른 요청을 처리 중입니다. 잠시 후 다시 시도해 주세요."),
     DETAILS_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 필수 정보가 등록된 상태입니다."),
     CERTIFICATION_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 인증 요청이 존재합니다."),
     CERTIFICATION_ALREADY_PROCESSED(HttpStatus.CONFLICT, "이미 처리된 인증 건입니다."),
+    CERTIFICATION_SEMESTER_MISMATCH(HttpStatus.CONFLICT, "현재 학기의 인증 요청만 승인할 수 있습니다."),
     SURVEY_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "이미 설문을 제출한 상태입니다."),
     HEART_ALREADY_SENT(HttpStatus.CONFLICT, "이미 해당 유저에게 하트를 보냈습니다."),
     ALREADY_CONFIRMED(HttpStatus.CONFLICT, "이미 확정한 상태입니다."),
@@ -82,6 +84,9 @@ public enum ErrorCode {
 
     // ── 422 ──
     NOT_ACCEPTED_STATUS(HttpStatus.UNPROCESSABLE_ENTITY, "ACCEPTED 상태에서만 확정할 수 있습니다."),
+
+    // ── 429 ──
+    CERTIFICATION_UPLOAD_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "인증 이미지 업로드 URL은 최근 5분 동안 최대 5회 요청할 수 있습니다."),
 
     // ── 500 ──
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다."),

@@ -18,9 +18,11 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.ColumnDefault;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.UUID;
 
 @Entity
 @Table(
@@ -38,6 +40,11 @@ public class Users {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    // 외부 공개용 식별자. 최초 저장 시 발급하고 변경하지 않음
+    @Column(name = "public_id", nullable = false, unique = true, updatable = false)
+    @ColumnDefault("gen_random_uuid()")
+    private UUID publicId;
 
     // OAuth 제공자에서 발급한 사용자 식별자
     @Column(nullable = false, unique = true)
@@ -86,6 +93,9 @@ public class Users {
 
     @PrePersist
     protected void onCreate() {
+        if (this.publicId == null) {
+            this.publicId = UUID.randomUUID();
+        }
         this.createdAt = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
         this.updatedAt = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
     }

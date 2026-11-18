@@ -5,6 +5,7 @@ import com.irummate.domain.recruitment.dto.RecruitmentParticipationView;
 import com.irummate.domain.recruitment.entity.RecruitmentCategory;
 import com.irummate.domain.recruitment.entity.RecruitmentParticipantStatus;
 import com.irummate.domain.recruitment.entity.RecruitmentVisibility;
+import com.irummate.domain.recruitment.entity.Recruitments;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -235,6 +236,30 @@ class RecruitmentLifecycleBatchTest {
         });
 
         assertEquals(expected, actual);
+    }
+
+    @Test
+    void calculatedDeadlineClosesThirtyMinutesBeforeActivityAndEndsAtActivity() {
+        Recruitments recruitment = Recruitments.builder().build();
+        recruitment.configureSchedule(NOW.plusHours(1), NOW);
+        Long id = insert("OPEN", recruitment.getActivityAt(), recruitment.getDeadlineAt(), null, null);
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
+
+        int beforeDeadline = tx.execute(status -> repository.closeRecruitmentsByDeadlineInBatch(
+                NOW.plusMinutes(30).minusSeconds(1), 50));
+        int atDeadline = tx.execute(status -> repository.closeRecruitmentsByDeadlineInBatch(NOW.plusMinutes(30), 50));
+        assertEquals(0, beforeDeadline);
+        assertEquals(1, atDeadline);
+        assertEquals("CLOSED", row(id).get("status"));
+        assertEquals("DEADLINE", row(id).get("close_reason"));
+
+        int beforeActivity = tx.execute(status -> repository.endRecruitmentsInBatch(NOW.plusHours(1).minusSeconds(1), 50));
+        int atActivity = tx.execute(status -> repository.endRecruitmentsInBatch(NOW.plusHours(1), 50));
+        assertEquals(0, beforeActivity);
+        assertEquals(1, atActivity);
+        assertEquals("ENDED", row(id).get("status"));
+        assertEquals(Timestamp.valueOf(NOW.plusMinutes(30)), row(id).get("closed_at"));
+        assertEquals(Timestamp.valueOf(NOW.plusHours(1)), row(id).get("completed_at"));
     }
 
     private int runBatch(boolean ending, int batchSize) {

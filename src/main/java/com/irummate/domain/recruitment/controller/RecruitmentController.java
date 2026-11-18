@@ -67,10 +67,10 @@ public class RecruitmentController {
 
 
     // 게시글 작성 api
-    @Operation(summary = "모집글 작성", description = "maxParticipants는 작성자를 제외한 모집 인원입니다. 서버는 작성자를 포함해 정원을 저장하고 작성자를 HOST 참여자로 등록합니다. 공동구매는 priceType과 amount가 필요하고 다른 카테고리에는 금액 정보를 전달하지 않습니다.")
+    @Operation(summary = "모집글 작성", description = "활동 일시는 현재 시각으로부터 최소 1시간 이후여야 합니다. 모집 마감은 서버에서 활동 30분 전으로 계산하며 deadlineAt 요청값은 사용하지 않습니다. maxParticipants는 작성자를 제외한 모집 인원이며 작성자를 HOST로 등록합니다. 공동구매는 priceType과 amount가 필요하고 다른 카테고리에는 금액 정보를 전달하지 않습니다.")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "모집글 식별자, 초기 상태, 작성 시각을 반환하고 Location 헤더에 생성된 모집글의 상세 조회 경로를 제공합니다.", headers = @Header(name = "Location", description = "생성된 모집글 상세 조회 경로", schema = @Schema(type = "string", format = "uri-reference"))),
-            @ApiResponse(responseCode = "400", description = "필수 항목, 제목·장소 길이, 모집 인원, 금액 또는 일정이 유효하지 않습니다. 두 일시는 미래여야 하며 모집 마감 일시는 활동 시작 일시보다 빨라야 합니다.", content = @Content(schema = @Schema(implementation = GlobalApiResponse.class))),
+            @ApiResponse(responseCode = "400", description = "필수 항목, 제목·장소 길이, 모집 인원, 금액 또는 일정이 유효하지 않습니다. 활동 시작까지 최소 1시간이 남아 있어야 합니다.", content = @Content(schema = @Schema(implementation = GlobalApiResponse.class))),
             @ApiResponse(responseCode = "404", description = "사용자를 찾을 수 없습니다.", content = @Content(schema = @Schema(implementation = GlobalApiResponse.class)))
     })
     @PostMapping
@@ -119,10 +119,10 @@ public class RecruitmentController {
 
 
     // 게시글 수정 api
-    @Operation(summary = "모집글 수정", description = "전달한 필드만 수정하고 생략하거나 null인 필드는 유지합니다. maxParticipants는 작성자를 제외한 인원이며 변경된 정원은 현재 참여 인원 이상이어야 합니다.")
+    @Operation(summary = "모집글 수정", description = "전달한 필드만 수정하고 생략하거나 null인 필드는 유지합니다. 활동 일시 변경 시 최소 1시간 이후로 설정해야 하며 마감도 활동 30분 전으로 다시 계산합니다. deadlineAt 요청값은 사용하지 않습니다. maxParticipants는 작성자를 제외한 인원이며 변경된 정원은 현재 참여 인원 이상이어야 합니다.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "수정된 모집글의 상세 정보와 내 즐겨찾기 여부를 반환합니다. 정원 변경으로 FULL 마감 조건이 달라지면 모집 상태도 반영합니다."),
-            @ApiResponse(responseCode = "400", description = "수정할 필드가 없거나 입력값·일정·금액이 유효하지 않습니다. 모집 마감은 활동 시작보다 빨라야 하며 정원은 현재 참여 인원 이상이어야 합니다.", content = @Content(schema = @Schema(implementation = GlobalApiResponse.class))),
+            @ApiResponse(responseCode = "400", description = "수정할 필드가 없거나 입력값·일정·금액이 유효하지 않습니다. 활동 일시를 변경하면 현재 시각으로부터 최소 1시간 이후여야 하며 정원은 현재 참여 인원 이상이어야 합니다.", content = @Content(schema = @Schema(implementation = GlobalApiResponse.class))),
             @ApiResponse(responseCode = "403", description = "모집글 작성자가 아닙니다.", content = @Content(schema = @Schema(implementation = GlobalApiResponse.class))),
             @ApiResponse(responseCode = "404", description = "모집글을 찾을 수 없습니다.", content = @Content(schema = @Schema(implementation = GlobalApiResponse.class))),
             @ApiResponse(responseCode = "409", description = "숨김 글이거나 OPEN·CLOSED 상태가 아니거나 활동이 시작되어 수정할 수 없습니다. 다른 요청과의 잠금 충돌도 포함합니다.", content = @Content(schema = @Schema(implementation = GlobalApiResponse.class)))

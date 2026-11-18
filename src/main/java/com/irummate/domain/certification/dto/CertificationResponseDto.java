@@ -5,12 +5,13 @@ import lombok.Builder;
 import lombok.Getter;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Getter
 @Builder
 public class CertificationResponseDto {
 
-    private final String certificationId;
+    private final UUID certificationId;
     private final String userId;
     private final String semester;
     private final String imageKey;
@@ -18,7 +19,7 @@ public class CertificationResponseDto {
     private final String adminComment;
     private final LocalDateTime createdAt;
 
-    public static CertificationResponseDto from(Certification certification, String encodedUserId, String certificationId) {
+    public static CertificationResponseDto from(Certification certification, String encodedUserId, UUID certificationId) {
         return CertificationResponseDto.builder()
                 .certificationId(certificationId)
                 .userId(encodedUserId)

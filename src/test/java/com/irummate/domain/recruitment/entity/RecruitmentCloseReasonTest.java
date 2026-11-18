@@ -69,7 +69,7 @@ class RecruitmentCloseReasonTest {
     @Test
     void capacityReductionRecordsFullReason() {
         Recruitments recruitment = recruitment();
-        recruitment.update(null, null, null, null, 2, null, null, now);
+        recruitment.update(null, null, null, 2, null, null, now);
         assertEquals(RecruitmentCloseReason.FULL, recruitment.getCloseReason());
     }
 
@@ -87,7 +87,7 @@ class RecruitmentCloseReasonTest {
     void increasingCapacityReopensFullRecruitment() {
         Recruitments recruitment = recruitment();
         recruitment.increaseParticipants(now);
-        recruitment.update(null, null, null, null, 4, null, null, now);
+        recruitment.update(null, null, null, 4, null, null, now);
 
         assertEquals(RecruitmentStatus.OPEN, recruitment.getStatus());
         assertEquals(3, recruitment.getNowParticipants());
@@ -100,7 +100,7 @@ class RecruitmentCloseReasonTest {
     void increasingCapacityKeepsManualClose() {
         Recruitments recruitment = recruitment();
         recruitment.close(now);
-        recruitment.update(null, null, null, null, 4, null, null, now);
+        recruitment.update(null, null, null, 4, null, null, now);
 
         assertEquals(RecruitmentStatus.CLOSED, recruitment.getStatus());
         assertEquals(RecruitmentCloseReason.MANUAL, recruitment.getCloseReason());
@@ -111,20 +111,21 @@ class RecruitmentCloseReasonTest {
     void increasingCapacityDoesNotReopenAfterDeadline() {
         Recruitments recruitment = recruitment();
         recruitment.increaseParticipants(now);
-        recruitment.update(null, null, null, null, 4, null, null, now.plusHours(1));
+        recruitment.update(null, null, null, 4, null, null, now.plusHours(1));
 
         assertEquals(RecruitmentStatus.CLOSED, recruitment.getStatus());
         assertEquals(RecruitmentCloseReason.FULL, recruitment.getCloseReason());
     }
 
     @Test
-    void extendingDeadlineAndCapacityKeepsDeadlineClose() {
+    void extendingActivityAndCapacityKeepsDeadlineClose() {
         Recruitments recruitment = recruitment();
         recruitment.closeByDeadline(now.plusHours(1));
-        recruitment.update(null, null, null, now.plusMinutes(90), 4,
+        recruitment.update(null, null, now.plusHours(3), 4,
                 null, null, now.plusHours(1));
 
         assertEquals(RecruitmentStatus.CLOSED, recruitment.getStatus());
         assertEquals(RecruitmentCloseReason.DEADLINE, recruitment.getCloseReason());
+        assertEquals(now.plusMinutes(150), recruitment.getDeadlineAt());
     }
 }

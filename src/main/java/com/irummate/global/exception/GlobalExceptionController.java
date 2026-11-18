@@ -5,6 +5,7 @@ import com.irummate.global.response.GlobalApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.dao.PessimisticLockingFailureException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.dao.DataAccessResourceFailureException;
@@ -23,19 +24,29 @@ import java.util.List;
 public class GlobalExceptionController {
 
     // 요청 관리 Handler
-    // 공지 API의 JSON/쿼리 오류와 모집·즐겨찾기 목록의 쿼리 형식 오류를 400으로 처리
-    @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class})
+    // 공지 API의 JSON 형식 오류를 400으로 처리
+    @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<GlobalApiResponse<?>> handleInputFormat(Exception e, HttpServletRequest request) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
         boolean notice = "/api/notices".equals(path) || "/internal/notices".equals(path);
-        boolean recruitmentListQuery = "GET".equals(request.getMethod())
-                && ("/api/recruitments".equals(path) || "/api/recruitments/bookmarks/me".equals(path))
-                && e instanceof MethodArgumentTypeMismatchException;
-        if (!notice && !recruitmentListQuery) {
+        if (!notice) {
             return handleException(e);
         }
         return ResponseEntity.badRequest().body(GlobalApiResponse.error(
                 HttpStatus.BAD_REQUEST, "요청 값이나 형식이 올바르지 않습니다.", null));
+    }
+
+    // UUID·숫자·Enum 등 요청 파라미터의 타입 변환 실패를 400으로 처리
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<GlobalApiResponse<?>> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
+
+        log.warn("Request parameter type mismatch: {}", e.getName());
+
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+
+        return ResponseEntity
+                .status(status)
+                .body(GlobalApiResponse.error(status, "요청 값이나 형식이 올바르지 않습니다.", null));
     }
 
     @ExceptionHandler({
@@ -122,13 +133,26 @@ public class GlobalExceptionController {
 
 
 
+    // 모든 API에서 발생한 낙관적 잠금 충돌을 409로 응답
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ResponseEntity<GlobalApiResponse<?>> handleUpdateConflict(OptimisticLockingFailureException e) {
+
+        log.warn("낙관적 잠금 충돌: exception={}", e.getClass().getSimpleName());
+
+        ErrorCode errorCode = ErrorCode.UPDATE_CONFLICT;
+
+        return ResponseEntity
+                .status(errorCode.getHttpStatus())
+                .body(GlobalApiResponse.error(errorCode.getHttpStatus(), errorCode.getMessage(), null));
+    }
+
     // 모든 API에서 발생한 비관적 잠금 실패를 409로 응답
     @ExceptionHandler(PessimisticLockingFailureException.class)
     public ResponseEntity<GlobalApiResponse<?>> handleLockConflict(
             PessimisticLockingFailureException e
     ){
 
-        log.warn("모집글 잠금 획득 실패: exception={}", e.getClass().getSimpleName());
+        log.warn("비관적 잠금 획득 실패: exception={}", e.getClass().getSimpleName());
 
         ErrorCode errorCode = ErrorCode.LOCK_CONFLICT;
 

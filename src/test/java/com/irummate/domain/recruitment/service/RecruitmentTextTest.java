@@ -79,7 +79,7 @@ class RecruitmentTextTest {
 
         service.createRecruitment(1L, RecruitmentCreateRequestDto.builder()
                 .category(RecruitmentCategory.MEAL).title(" \t밥 친구\u2003 ")
-                .place(" \t\u2003 ").activityAt(now.plusDays(2)).deadlineAt(now.plusDays(1))
+                .place(" \t\u2003 ").activityAt(now.plusDays(2))
                 .maxParticipants(2).build());
 
         verify(recruitments).save(any(Recruitments.class));
@@ -88,7 +88,7 @@ class RecruitmentTextTest {
     @Test
     void partialUpdateStripsBothTextFields() {
         Recruitments recruitment = recruitment();
-        recruitment.update("  새 제목  ", " \t학생회관\u2003 ", null, null, null, null, null, now);
+        recruitment.update("  새 제목  ", " \t학생회관\u2003 ", null, null, null, null, now);
 
         assertEquals("새 제목", recruitment.getTitle());
         assertEquals("학생회관", recruitment.getPlace());
@@ -102,7 +102,7 @@ class RecruitmentTextTest {
         assertTrue(request.isUpdateRequested());
 
         Recruitments recruitment = recruitment();
-        recruitment.update(null, request.getPlace(), null, null, null, null, null, now);
+        recruitment.update(null, request.getPlace(), null, null, null, null, now);
         assertNull(recruitment.getPlace());
         assertEquals("기존 제목", recruitment.getTitle());
     }
@@ -112,7 +112,7 @@ class RecruitmentTextTest {
     void omittedOrNullPlacePreservesExistingPlace(String json) {
         RecruitmentUpdateRequestDto request = mapper.readValue(json, RecruitmentUpdateRequestDto.class);
         Recruitments recruitment = recruitment();
-        recruitment.update(request.getTitle(), request.getPlace(), null, null, null, null, null, now);
+        recruitment.update(request.getTitle(), request.getPlace(), null, null, null, null, now);
 
         assertEquals("새 제목", recruitment.getTitle());
         assertEquals("기존 장소", recruitment.getPlace());
@@ -122,10 +122,10 @@ class RecruitmentTextTest {
     void invalidNormalizedTextDoesNotPartiallyChangeEntity() {
         Recruitments recruitment = recruitment();
         BusinessException error = assertThrows(BusinessException.class,
-                () -> recruitment.update("  ", "새 장소", null, null, null, null, null, now));
+                () -> recruitment.update("  ", "새 장소", null, null, null, null, now));
         assertEquals(ErrorCode.INVALID_INPUT, error.getErrorCode());
         assertThrows(BusinessException.class,
-                () -> recruitment.update("새 제목", "가".repeat(256), null, null, null, null, null, now));
+                () -> recruitment.update("새 제목", "가".repeat(256), null, null, null, null, now));
         assertThrows(BusinessException.class,
                 () -> recruitment.configureText("가".repeat(256), null));
         assertEquals("기존 제목", recruitment.getTitle());

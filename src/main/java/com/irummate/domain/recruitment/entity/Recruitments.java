@@ -139,7 +139,6 @@ public class Recruitments {
             String title,
             String place,
             LocalDateTime activityAt,
-            LocalDateTime deadlineAt,
             Integer maxParticipants,
             RecruitmentPriceType priceType,
             Integer amount,
@@ -153,16 +152,9 @@ public class Recruitments {
                 || !this.activityAt.isAfter(now)) {
             throw new BusinessException(ErrorCode.INVALID_RECRUITMENT_STATUS_TRANSITION);
         }
-        if ((activityAt != null && !activityAt.isAfter(now))
-                || (deadlineAt != null && !deadlineAt.isAfter(now))) {
-            throw new BusinessException(ErrorCode.PAST_DATE_NOT_ALLOWED);
-        }
-
-        LocalDateTime updatedActivityAt = activityAt != null ? activityAt : this.activityAt;
-        LocalDateTime updatedDeadlineAt = deadlineAt != null ? deadlineAt : this.deadlineAt;
-        if (!updatedDeadlineAt.isBefore(updatedActivityAt)) {
-            throw new BusinessException(ErrorCode.INVALID_RECRUITMENT_PERIOD);
-        }
+        // 활동 일시를 바꿀 때만 최소 1시간 기준을 검사하고 마감도 다시 계산
+        boolean activityChanged = activityAt != null && !activityAt.equals(this.activityAt);
+        LocalDateTime updatedDeadlineAt = activityChanged ? calculateDeadlineAt(activityAt, now) : this.deadlineAt;
         if (maxParticipants != null
                 && (maxParticipants < 2 || maxParticipants < this.nowParticipants)) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
@@ -178,8 +170,10 @@ public class Recruitments {
 
         this.title = updatedTitle;
         this.place = updatedPlace;
-        if (activityAt != null) this.activityAt = activityAt;
-        if (deadlineAt != null) this.deadlineAt = deadlineAt;
+        if (activityChanged) {
+            this.activityAt = activityAt;
+            this.deadlineAt = updatedDeadlineAt;
+        }
         if (maxParticipants != null) this.maxParticipants = maxParticipants;
         this.priceType = updatedPriceType;
         this.amount = updatedAmount;
@@ -193,6 +187,23 @@ public class Recruitments {
         if (maxParticipants != null) {
             reopenIfFullAndAvailable(now);
         }
+    }
+
+    // 작성 시 활동 일시와 모집 마감을 함께 설정
+    public void configureSchedule(LocalDateTime activityAt, LocalDateTime now) {
+        LocalDateTime deadlineAt = calculateDeadlineAt(activityAt, now);
+        this.activityAt = activityAt;
+        this.deadlineAt = deadlineAt;
+    }
+
+    private LocalDateTime calculateDeadlineAt(LocalDateTime activityAt, LocalDateTime now) {
+        if (activityAt == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+        if (activityAt.isBefore(now.plusHours(1))) {
+            throw new BusinessException(ErrorCode.INVALID_RECRUITMENT_PERIOD);
+        }
+        return activityAt.minusMinutes(30);
     }
 
     // 생성 시 문자열 정리. DTO를 거치지 않는 호출에서도 같은 기준 적용
