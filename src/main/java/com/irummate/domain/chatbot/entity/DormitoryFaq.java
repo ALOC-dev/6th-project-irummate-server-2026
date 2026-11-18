@@ -2,9 +2,10 @@ package com.irummate.domain.chatbot.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.ZoneId;
+import org.hibernate.annotations.Array;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "dormitory_faq")
@@ -28,20 +29,12 @@ public class DormitoryFaq {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String answer;
 
-    @Column(nullable = false, length = 200)
-    private String source;
-
     @Builder.Default
     @Column(name = "is_active", nullable = false)
     private boolean isActive = true;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-
-    @PrePersist
-    protected void onCreate() {
-        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
-        this.createdAt = now;
-    }
+    @Array(length = 1536)
+    @JdbcTypeCode(SqlTypes.VECTOR)
+    @Column(name = "embedding", columnDefinition = "vector(1536)")
+    private float[] embedding;
 }

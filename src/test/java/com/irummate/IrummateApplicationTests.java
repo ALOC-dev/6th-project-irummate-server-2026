@@ -2,6 +2,8 @@ package com.irummate;
 
 import com.irummate.domain.auth.dto.KakaoTokenResponseDto;
 import com.irummate.domain.auth.dto.KakaoUserInfoResponseDto;
+import com.irummate.domain.chatbot.init.DormitoryFaqSeeder;
+import com.openai.client.OpenAIClient;
 import com.irummate.domain.survey.dto.SurveyAnswers;
 import com.irummate.domain.survey.entity.SurveyAnswerField;
 import com.irummate.domain.survey.entity.UserPreferences;
@@ -56,6 +58,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "notice.ingest-key=test-ingest-key"
 })
 class IrummateApplicationTests {
+
+    // 일반 테스트는 빈 DB에서도 FAQ 적재 및 외부 API 호출을 실행하지 않는다.
+    @MockitoBean
+    private DormitoryFaqSeeder dormitoryFaqSeeder;
+
+    @MockitoBean
+    private OpenAIClient openAIClient;
 
     @TestConfiguration(proxyBeanMethods = false)
     static class PostgresConfiguration {

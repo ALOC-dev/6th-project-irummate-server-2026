@@ -1,5 +1,7 @@
 package com.irummate;
 
+import com.irummate.domain.chatbot.init.DormitoryFaqSeeder;
+import com.openai.client.OpenAIClient;
 import com.irummate.global.jwt.JwtTokenProvider;
 import com.irummate.global.util.HashIdsUtils;
 import io.jsonwebtoken.Jwts;
@@ -47,6 +49,9 @@ abstract class SecurityIntegrationSupport {
 
     @MockitoBean S3Client s3Client;
     @MockitoBean S3Presigner s3Presigner;
+    // 보안 테스트의 빈 DB에서 FAQ 초기 적재와 OpenAI 호출을 막는다.
+    @MockitoBean DormitoryFaqSeeder dormitoryFaqSeeder;
+    @MockitoBean OpenAIClient openAIClient;
     @Autowired JdbcTemplate jdbc;
     @Autowired JwtTokenProvider tokens;
     @Autowired HashIdsUtils hashIds;
