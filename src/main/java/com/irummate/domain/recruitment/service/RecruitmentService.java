@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.Clock;
 import java.util.List;
 
 @Service
@@ -31,6 +31,7 @@ public class RecruitmentService {
     private final RecruitmentParticipantsRepository recruitmentParticipantsRepository;
     private final UsersRepository usersRepository;
     private final RecruitmentBookmarksRepository recruitmentBookmarksRepository;
+    private final Clock clock;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -86,7 +87,8 @@ public class RecruitmentService {
                         mine, myParticipation == null ? null : myParticipation.getStatus()
                 ),
                 myParticipation == null ? null : myParticipation.getRemovalReason(),
-                recruitmentBookmarksRepository.existsByUser_IdAndRecruitment_Id(userId, recruitmentId)
+                recruitmentBookmarksRepository.existsByUser_IdAndRecruitment_Id(userId, recruitmentId),
+                LocalDateTime.now(clock)
         );
 
 
@@ -108,10 +110,11 @@ public class RecruitmentService {
         // 다음 목록 유무 확인용 1건만 추가 조회. 오프셋은 항상 0으로 유지
         Pageable pageable = PageRequest.of(0, size + 1);
 
+        // 한 요청 안에서는 같은 시각을 기준으로 마감 여부, 24시간 범위, 참여 가능 여부를 판단
+        LocalDateTime now = LocalDateTime.now(clock);
+
         List<RecruitmentsRepository.RecruitmentListRow> rows;
         if (sort == RecruitmentSort.CLOSING_SOON) {
-            // 한 요청 안에서는 같은 시각을 기준으로 마감 여부와 24시간 범위를 판단
-            LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
             rows = recruitmentsRepository.findClosingSoonRecruitmentList(
                     userId, category, RecruitmentVisibility.VISIBLE, RecruitmentStatus.OPEN,
                     now, now.plusHours(24), cursorDeadlineAt, cursorId, pageable);
@@ -129,7 +132,8 @@ public class RecruitmentService {
                                 userId.equals(row.getAuthorId()),
                                 row.getParticipantStatus()
                         ),
-                        row.getAuthorId(), row.getAuthorNickname(), row.getAuthorProfileImageUrl(), row.isBookmarked()
+                        row.getAuthorId(), row.getAuthorNickname(), row.getAuthorProfileImageUrl(), row.isBookmarked(),
+                        now
                 ))
                 .toList();
 
@@ -155,7 +159,7 @@ public class RecruitmentService {
                 .orElseThrow(()->new BusinessException(ErrorCode.USER_NOT_FOUND));
 
 
-        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+        LocalDateTime now = LocalDateTime.now(clock);
 
         // 게시글 생성
         // 카테고리별 사용 attribute 다르기에 category에 따라 일부 attribute null값 적용
@@ -246,6 +250,9 @@ public class RecruitmentService {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
 
+        // 현재 시간
+        LocalDateTime now = LocalDateTime.now(clock);
+
         // 게시글 update
         recruitment.update(
                 request.getTitle(),
@@ -255,7 +262,7 @@ public class RecruitmentService {
                         ? null : includeHostInCapacity(request.getMaxParticipants()),
                 request.getPriceType(),
                 request.getAmount(),
-                LocalDateTime.now(ZoneId.of("Asia/Seoul"))
+                now
         );
 
         recruitmentsRepository.flush();
@@ -264,7 +271,8 @@ public class RecruitmentService {
                 recruitment,
                 RecruitmentParticipationView.MINE,
                 null,
-                recruitmentBookmarksRepository.existsByUser_IdAndRecruitment_Id(userId, recruitmentId)
+                recruitmentBookmarksRepository.existsByUser_IdAndRecruitment_Id(userId, recruitmentId),
+                now
                 );
     }
 
@@ -295,7 +303,7 @@ public class RecruitmentService {
 
 
         // 현재 시간
-        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+        LocalDateTime now = LocalDateTime.now(clock);
 
         // 닫을 수 있는 상태인지 검증하고 게시글 close
         recruitment.close(now);
@@ -310,7 +318,8 @@ public class RecruitmentService {
                 recruitment,
                 RecruitmentParticipationView.MINE,
                 null,
-                recruitmentBookmarksRepository.existsByUser_IdAndRecruitment_Id(userId, recruitmentId)
+                recruitmentBookmarksRepository.existsByUser_IdAndRecruitment_Id(userId, recruitmentId),
+                now
         );
 
     }
@@ -339,8 +348,11 @@ public class RecruitmentService {
         }
 
 
+        // 현재 시간
+        LocalDateTime now = LocalDateTime.now(clock);
+
         // 게시글 모집 재개
-        recruitment.reopen(LocalDateTime.now(ZoneId.of("Asia/Seoul")));
+        recruitment.reopen(now);
 
         recruitmentsRepository.flush();
 
@@ -348,7 +360,8 @@ public class RecruitmentService {
                 recruitment,
                 RecruitmentParticipationView.MINE,
                 null,
-                recruitmentBookmarksRepository.existsByUser_IdAndRecruitment_Id(userId, recruitmentId)
+                recruitmentBookmarksRepository.existsByUser_IdAndRecruitment_Id(userId, recruitmentId),
+                now
         );
     }
 
@@ -378,8 +391,11 @@ public class RecruitmentService {
             throw new BusinessException(ErrorCode.NOT_RECRUITMENT_AUTHOR);
         }
 
+        // 현재 시간
+        LocalDateTime now = LocalDateTime.now(clock);
+
         // 취소
-        recruitment.cancel(request.getCancelReason(), LocalDateTime.now(ZoneId.of("Asia/Seoul")));
+        recruitment.cancel(request.getCancelReason(), now);
 
         recruitmentsRepository.flush();
 
@@ -387,7 +403,8 @@ public class RecruitmentService {
                 recruitment,
                 RecruitmentParticipationView.MINE,
                 null,
-                recruitmentBookmarksRepository.existsByUser_IdAndRecruitment_Id(userId, recruitmentId)
+                recruitmentBookmarksRepository.existsByUser_IdAndRecruitment_Id(userId, recruitmentId),
+                now
         );
     }
 
@@ -416,8 +433,11 @@ public class RecruitmentService {
         }
 
 
+        // 현재 시간
+        LocalDateTime now = LocalDateTime.now(clock);
+
         // 활동 시작 이후 게시판 처리 종료
-        recruitment.end(LocalDateTime.now(ZoneId.of("Asia/Seoul")));
+        recruitment.end(now);
 
         recruitmentsRepository.flush();
 
@@ -425,7 +445,8 @@ public class RecruitmentService {
                 recruitment,
                 RecruitmentParticipationView.MINE,
                 null,
-                recruitmentBookmarksRepository.existsByUser_IdAndRecruitment_Id(userId, recruitmentId)
+                recruitmentBookmarksRepository.existsByUser_IdAndRecruitment_Id(userId, recruitmentId),
+                now
         );
 
     }

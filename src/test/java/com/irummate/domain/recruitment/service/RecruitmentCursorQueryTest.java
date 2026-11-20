@@ -23,6 +23,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
@@ -103,7 +104,7 @@ class RecruitmentCursorQueryTest {
         statistics.clear();
         try {
             RecruitmentService service = new RecruitmentService(repository, mock(RecruitmentParticipantsRepository.class),
-                    mock(UsersRepository.class), bookmarks);
+                    mock(UsersRepository.class), bookmarks, Clock.system(ZoneId.of("Asia/Seoul")));
             var response = new TransactionTemplate(transactionManager).execute(tx ->
                     service.getRecruitments(authorId, null, sort, null, null, null, 50));
 

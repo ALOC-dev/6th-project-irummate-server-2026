@@ -16,6 +16,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.PageRequest;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
@@ -27,7 +28,7 @@ import static org.mockito.Mockito.*;
 class RecruitmentClosingSoonServiceTest {
     private final RecruitmentsRepository repository = mock(RecruitmentsRepository.class);
     private final RecruitmentService service = new RecruitmentService(repository,
-            mock(RecruitmentParticipantsRepository.class), mock(UsersRepository.class), mock(RecruitmentBookmarksRepository.class));
+            mock(RecruitmentParticipantsRepository.class), mock(UsersRepository.class), mock(RecruitmentBookmarksRepository.class), Clock.system(ZoneId.of("Asia/Seoul")));
     private static final LocalDateTime NOW = LocalDateTime.now(ZoneId.of("Asia/Seoul")).withNano(123456000);
 
     @Test

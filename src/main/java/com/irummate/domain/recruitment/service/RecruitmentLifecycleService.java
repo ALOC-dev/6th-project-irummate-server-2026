@@ -8,7 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.Clock;
 
 @Service
 @RequiredArgsConstructor
@@ -17,6 +17,7 @@ public class RecruitmentLifecycleService {
     private static final int BATCH_SIZE = 50;
 
     private final RecruitmentsRepository recruitmentsRepository;
+    private final Clock clock;
 
     // 영속성 관리를 연결(해당 service가 관리하는 영속성)
     @PersistenceContext
@@ -26,7 +27,7 @@ public class RecruitmentLifecycleService {
     @Transactional
     public int endRecruitments() {
         applyLockTimeout();
-        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+        LocalDateTime now = LocalDateTime.now(clock);
 
         // 엔티티 조회 없이 최대 50건 종료. 대상 선택과 갱신은 같은 SQL에서 수행
         return recruitmentsRepository.endRecruitmentsInBatch(now, BATCH_SIZE);
@@ -35,7 +36,7 @@ public class RecruitmentLifecycleService {
     @Transactional
     public int closeRecruitmentsByDeadline() {
         applyLockTimeout();
-        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+        LocalDateTime now = LocalDateTime.now(clock);
 
         return recruitmentsRepository.closeRecruitmentsByDeadlineInBatch(now, BATCH_SIZE);
     }

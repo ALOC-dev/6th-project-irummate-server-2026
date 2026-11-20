@@ -5,13 +5,22 @@ import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
 import jakarta.persistence.*;
 import lombok.*;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 
 @Entity
+@EntityListeners(AuditingEntityListener.class)
 @Getter
-@Table(name = "recruitments")
+@Table(
+        name = "recruitments",
+        indexes = @Index(
+                name = "idx_recruitments_visibility_created_at_id",
+                columnList = "visibility, created_at DESC, id DESC"
+        )
+)
 @Builder
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -109,30 +118,16 @@ public class Recruitments {
 
 
 
-    // 게시글 첫 작성 일자
+    // 게시글 첫 작성 일자(Clock 기준 자동 기록, JpaAuditingConfig)
+    @CreatedDate
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
 
-    // 게시글 마지막 수정 일자
+    // 게시글 마지막 수정 일자(Clock 기준 자동 기록, JpaAuditingConfig)
+    @LastModifiedDate
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
-
-
-    @PrePersist
-    protected void onCreate() {
-        LocalDateTime now =
-                LocalDateTime.now(ZoneId.of("Asia/Seoul"));
-
-        this.createdAt = now;
-        this.updatedAt = now;
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        this.updatedAt =
-                LocalDateTime.now(ZoneId.of("Asia/Seoul"));
-    }
 
     // null인 항목은 유지하고, 전달된 항목만 수정합니다.
     public void update(

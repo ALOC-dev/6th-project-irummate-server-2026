@@ -22,6 +22,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
@@ -37,9 +38,9 @@ class RecruitmentParticipationResponseTest {
     private final RecruitmentParticipantsRepository participants = mock(RecruitmentParticipantsRepository.class);
     private final UsersRepository users = mock(UsersRepository.class);
     private final RecruitmentBookmarksRepository bookmarks = mock(RecruitmentBookmarksRepository.class);
-    private final RecruitmentService service = new RecruitmentService(recruitments, participants, users, bookmarks);
+    private final RecruitmentService service = new RecruitmentService(recruitments, participants, users, bookmarks, Clock.system(ZoneId.of("Asia/Seoul")));
     private final RecruitmentParticipationService participationService =
-            new RecruitmentParticipationService(recruitments, participants, users, mock(HashIdsUtils.class), bookmarks);
+            new RecruitmentParticipationService(recruitments, participants, users, mock(HashIdsUtils.class), bookmarks, Clock.system(ZoneId.of("Asia/Seoul")));
     private final Users viewer = user(2L);
 
     @ParameterizedTest
@@ -170,8 +171,8 @@ class RecruitmentParticipationResponseTest {
         ReflectionTestUtils.setField(recruitment, "deadlineAt", now.plusDays(deadlineDays));
         ReflectionTestUtils.setField(recruitment, "activityAt", now.plusDays(activityDays));
 
-        assertEquals(expected, RecruitmentResponseDto.from(recruitment, RecruitmentParticipationView.NONE, false).isJoinable());
-        assertEquals(expected, RecruitmentDetailResponseDto.from(recruitment, RecruitmentParticipationView.NONE, null, false)
+        assertEquals(expected, RecruitmentResponseDto.from(recruitment, RecruitmentParticipationView.NONE, false, LocalDateTime.now(ZoneId.of("Asia/Seoul"))).isJoinable());
+        assertEquals(expected, RecruitmentDetailResponseDto.from(recruitment, RecruitmentParticipationView.NONE, null, false, LocalDateTime.now(ZoneId.of("Asia/Seoul")))
                 .isJoinable());
     }
 
@@ -185,8 +186,8 @@ class RecruitmentParticipationResponseTest {
         JsonMapper mapper = JsonMapper.builder().build();
 
         List<Object> responses = List.of(
-                RecruitmentResponseDto.from(recruitment, RecruitmentParticipationView.LEFT, false),
-                RecruitmentDetailResponseDto.from(recruitment, RecruitmentParticipationView.LEFT, null, false), leave);
+                RecruitmentResponseDto.from(recruitment, RecruitmentParticipationView.LEFT, false, LocalDateTime.now(ZoneId.of("Asia/Seoul"))),
+                RecruitmentDetailResponseDto.from(recruitment, RecruitmentParticipationView.LEFT, null, false, LocalDateTime.now(ZoneId.of("Asia/Seoul"))), leave);
         for (Object response : responses) {
             Map<?, ?> json = mapper.readValue(mapper.writeValueAsString(response), Map.class);
             assertEquals("LEFT", json.get("participating"));

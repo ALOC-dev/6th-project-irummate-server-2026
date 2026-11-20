@@ -19,6 +19,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.time.ZoneId;
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
@@ -68,7 +70,7 @@ class RecruitmentTextTest {
         RecruitmentsRepository recruitments = mock(RecruitmentsRepository.class);
         UsersRepository users = mock(UsersRepository.class);
         RecruitmentService service = new RecruitmentService(recruitments,
-                mock(RecruitmentParticipantsRepository.class), users, mock(RecruitmentBookmarksRepository.class));
+                mock(RecruitmentParticipantsRepository.class), users, mock(RecruitmentBookmarksRepository.class), Clock.system(ZoneId.of("Asia/Seoul")));
         when(users.findById(1L)).thenReturn(Optional.of(Users.builder().nickname("작성자").build()));
         when(recruitments.save(any(Recruitments.class))).thenAnswer(invocation -> {
             Recruitments saved = invocation.getArgument(0);

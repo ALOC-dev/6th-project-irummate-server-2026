@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
+import java.time.ZoneId;
 import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -107,9 +108,9 @@ class RecruitmentPriceTest {
         Recruitments recruitment = recruitment();
         recruitment.configurePrice(RecruitmentPriceType.SPLIT, 20000);
         assertEquals(5000, RecruitmentResponseDto.from(recruitment,
-                RecruitmentParticipationView.NONE, false).getEstimatedFee());
+                RecruitmentParticipationView.NONE, false, LocalDateTime.now(ZoneId.of("Asia/Seoul"))).getEstimatedFee());
         assertEquals(6667, RecruitmentResponseDto.from(recruitment,
-                RecruitmentParticipationView.LEFT, false).getEstimatedFee());
+                RecruitmentParticipationView.LEFT, false, LocalDateTime.now(ZoneId.of("Asia/Seoul"))).getEstimatedFee());
         RecruitmentResponseDto hidden = RecruitmentResponseDto.builder()
                 .visibility(RecruitmentVisibility.HIDDEN).title("숨겨진 게시글입니다.").build();
         assertNull(hidden.getAmount());

@@ -6,6 +6,7 @@ import com.irummate.domain.recruitment.entity.RecruitmentCategory;
 import com.irummate.domain.recruitment.entity.RecruitmentParticipantStatus;
 import com.irummate.domain.recruitment.entity.RecruitmentVisibility;
 import com.irummate.domain.recruitment.entity.Recruitments;
+import com.irummate.global.config.JpaAuditingConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -29,6 +30,7 @@ import org.testcontainers.utility.DockerImageName;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -53,8 +55,14 @@ class RecruitmentLifecycleBatchTest {
     @EnableAutoConfiguration
     @EntityScan("com.irummate.domain")
     @EnableJpaRepositories(basePackageClasses = RecruitmentsRepository.class)
-    @Import(RecruitmentLifecycleService.class)
+    // 생성/수정 시각 자동 기록(JpaAuditingConfig)과 서비스가 쓰는 Clock 등록
+    @Import({RecruitmentLifecycleService.class, JpaAuditingConfig.class})
     static class PersistenceConfiguration {
+        @Bean
+        Clock clock() {
+            return Clock.system(ZoneId.of("Asia/Seoul"));
+        }
+
         @Bean
         @ServiceConnection
         PostgreSQLContainer postgres() {

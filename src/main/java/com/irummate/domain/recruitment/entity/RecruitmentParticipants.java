@@ -7,11 +7,14 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 
 @Entity
+@EntityListeners(AuditingEntityListener.class)
 @Getter
 @Table(
         name = "recruitment_participants",
@@ -63,9 +66,12 @@ public class RecruitmentParticipants {
     @Column(name = "removal_reason", length = 100)
     private String removalReason;
 
+    // 생성/수정 시각(Clock 기준 자동 기록, JpaAuditingConfig)
+    @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    @LastModifiedDate
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
@@ -129,27 +135,13 @@ public class RecruitmentParticipants {
         if (this.status != RecruitmentParticipantStatus.JOINED) {
             throw new BusinessException(ErrorCode.RECRUITMENT_PARTICIPANT_NOT_ACTIVE);
         }
-        if (reason == null || reason.isBlank() || reason.length() > 100) {
+        String normalizedReason = reason == null ? null : reason.strip();
+        if (normalizedReason == null || normalizedReason.isEmpty() || normalizedReason.length() > 100) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
         this.status = RecruitmentParticipantStatus.REMOVED;
         this.leftAt = now;
-        this.removalReason = reason.strip();
-    }
-
-    @PrePersist
-    protected void onCreate() {
-        LocalDateTime now =
-                LocalDateTime.now(ZoneId.of("Asia/Seoul"));
-
-        this.createdAt = now;
-        this.updatedAt = now;
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        this.updatedAt =
-                LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+        this.removalReason = normalizedReason;
     }
 
 }

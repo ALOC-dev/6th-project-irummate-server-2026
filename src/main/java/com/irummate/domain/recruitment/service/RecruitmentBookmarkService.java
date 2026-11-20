@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.Clock;
 import java.util.List;
 
 @Service
@@ -29,6 +29,7 @@ public class RecruitmentBookmarkService {
     private final RecruitmentBookmarksRepository recruitmentBookmarksRepository;
     private final RecruitmentsRepository recruitmentsRepository;
     private final UsersRepository usersRepository;
+    private final Clock clock;
 
     @Transactional(readOnly = true)
     public RecruitmentBookmarkListResponseDto getMyBookmarks(
@@ -47,13 +48,17 @@ public class RecruitmentBookmarkService {
         boolean hasNext = rows.size() > size;
         var selectedRows = hasNext ? rows.subList(0, size) : rows;
 
+        // 목록 전체에 같은 기준 시각으로 참여 가능 여부를 판단
+        LocalDateTime now = LocalDateTime.now(clock);
+
         List<RecruitmentResponseDto> items = selectedRows.stream()
                 .map(row -> RecruitmentResponseDto.from(
                         row.getRecruitment(),
                         RecruitmentParticipationView.from(
                                 row.getAuthorId().equals(userId),
                                 row.getParticipantStatus()),
-                        row.getAuthorId(), row.getAuthorNickname(), row.getAuthorProfileImageUrl(), true
+                        row.getAuthorId(), row.getAuthorNickname(), row.getAuthorProfileImageUrl(), true,
+                        now
                 ))
                 .toList();
 
@@ -90,7 +95,7 @@ public class RecruitmentBookmarkService {
 
         // 게시글 잠금 없이 유니크 제약으로 중복 등록 방지
         recruitmentBookmarksRepository.insertIfAbsent(
-                userId, recruitmentId, LocalDateTime.now(ZoneId.of("Asia/Seoul")));
+                userId, recruitmentId, LocalDateTime.now(clock));
     }
 
     @Transactional

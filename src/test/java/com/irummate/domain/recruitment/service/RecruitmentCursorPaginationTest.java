@@ -19,6 +19,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
@@ -31,7 +32,7 @@ class RecruitmentCursorPaginationTest {
     private final RecruitmentsRepository repository = mock(RecruitmentsRepository.class);
     private final RecruitmentParticipantsRepository participants = mock(RecruitmentParticipantsRepository.class);
     private final UsersRepository users = mock(UsersRepository.class);
-    private final RecruitmentService service = new RecruitmentService(repository, participants, users, mock(RecruitmentBookmarksRepository.class));
+    private final RecruitmentService service = new RecruitmentService(repository, participants, users, mock(RecruitmentBookmarksRepository.class), Clock.system(ZoneId.of("Asia/Seoul")));
     private final LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul")).withNano(123456000);
 
     @ParameterizedTest
