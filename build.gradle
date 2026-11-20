@@ -2,6 +2,21 @@ plugins {
 	id 'java'
 	id 'org.springframework.boot' version '4.1.2'
 	id 'io.spring.dependency-management' version '1.1.7'
+	// 엔티티 바이트코드 enhancement: mappedBy @OneToOne(Users.userDetails/userPreferences)도 실제로 지연 로딩
+	// Spring Boot가 관리하는 hibernate-core는 7.4.13이지만 플러그인 저장소에 7.4.13이 없어
+	// 같은 7.4 계열의 가장 가까운 이전 버전을 사용(빌드 시 enhancement에만 쓰임)
+	id 'org.hibernate.orm' version '7.4.10.Final'
+}
+
+hibernate {
+	// 플러그인이 hibernate-core를 자기 버전으로 바꾸지 않도록 함
+	// → 런타임은 Spring Boot가 관리하는 버전(hibernate-vector 등과 동일) 유지
+	useSameVersion = false
+	enhancement {
+		enableLazyInitialization = true
+		// 변경 감지 방식은 기존(flush 시 스냅샷 비교) 그대로 유지
+		enableDirtyTracking = false
+	}
 }
 
 group = 'com.irummate'

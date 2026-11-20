@@ -1,19 +1,7 @@
 package com.irummate.domain.user.entity;
 
 import com.irummate.domain.survey.entity.UserPreferences;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.OneToOne;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -85,6 +73,7 @@ public class Users {
 
     // 사용자의 추가 신원 정보
     @OneToOne(mappedBy = "user", fetch = FetchType.LAZY)
+    @JoinColumn(name = "userDetails")
     private UserDetails userDetails;
 
     // 사용자의 생활 습관 및 매칭 선호 정보
