@@ -4,12 +4,14 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 
 @Entity
+@EntityListeners(AuditingEntityListener.class)
 @Getter
 @Table(name = "matching_config")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -30,14 +32,10 @@ public class MatchingConfig {
     @Column(name = "match_end_date", nullable = false)
     private LocalDate matchEndDate;
 
+    // 생성/수정 시 Clock 기준으로 자동 기록(JpaAuditingConfig)
+    @LastModifiedDate
     @Column(name = "updated_at", nullable = false)
     private  LocalDateTime updatedAt;
-
-    @PreUpdate
-    @PrePersist
-    public void update(){
-        this.updatedAt = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
-    }
 
     public MatchingConfig(LocalDate surveyStartDate,
                           LocalDate matchStartDate,

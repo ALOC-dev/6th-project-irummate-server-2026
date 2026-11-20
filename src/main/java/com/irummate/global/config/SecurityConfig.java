@@ -2,6 +2,8 @@ package com.irummate.global.config;
 
 import com.irummate.global.jwt.JwtAuthenticationFilter;
 import com.irummate.global.security.NoticeIngestKeyFilter;
+import com.irummate.global.exception.ErrorCode;
+import com.irummate.global.response.GlobalApiResponse;
 import tools.jackson.databind.json.JsonMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -9,6 +11,8 @@ import org.springframework.core.annotation.Order;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -20,6 +24,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @Configuration
@@ -71,7 +76,7 @@ public class SecurityConfig {
 
     @Bean
     @Order(2)
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, JsonMapper objectMapper) throws Exception {
         http
 
                 .csrf(csrf -> csrf.disable())
@@ -85,6 +90,15 @@ public class SecurityConfig {
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint((request, response, authException) ->
                                 response.sendError(HttpServletResponse.SC_UNAUTHORIZED))
+                        // 권한 거절은 기존 공통 오류 형식으로 응답
+                        .accessDeniedHandler((request, response, accessDeniedException) -> {
+                            HttpStatus status = ErrorCode.FORBIDDEN.getHttpStatus();
+                            response.setStatus(status.value());
+                            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                            response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+                            objectMapper.writeValue(response.getWriter(), GlobalApiResponse.error(
+                                    status, ErrorCode.FORBIDDEN.getMessage(), null));
+                        })
                 )
 
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
@@ -109,7 +123,10 @@ public class SecurityConfig {
                                 "/v3/api-docs/**",
                                 "/error"                 // 에러 발생 시 리다이렉트되는 경로
                         ).permitAll()
-
+                        // 관리자 전용 API
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        // 일반 사용자 전용 API
+                        .requestMatchers("/api/matching/**").hasRole("USER")
                         // 그 외의 나머지 모든 요청(anyRequest)은
                         // 무조건 로그인(인증, authenticated)을 완료한 사람만 들어오게 철저히 막습니다.
                         .anyRequest().authenticated()

@@ -1,6 +1,7 @@
 package com.irummate.domain.matching.service;
 
 import com.irummate.domain.chat.service.ChatService;
+import com.irummate.domain.certification.repository.CertificationRepository;
 import com.irummate.domain.matching.dto.ConfirmedContactResponseDto;
 import com.irummate.domain.matching.dto.MatchingResponseDto;
 import com.irummate.domain.matching.dto.PreferredAnswerDto;
@@ -17,6 +18,9 @@ import com.irummate.domain.user.repository.UsersRepository;
 import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
 import com.irummate.global.util.HashIdsUtils;
+import com.irummate.global.util.SemesterUtils;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,9 +30,9 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -41,14 +45,25 @@ public class MatchingService {
 
     private final MatchRepository matchRepository;
     private final UserPreferencesRepository userPreferencesRepository;
+    private final CertificationRepository certificationRepository;
     private final UsersRepository usersRepository;
     private final ChatService chatService;
     private final HashIdsUtils hashIdsUtils;
+    private final Clock clock;
 
+    @PersistenceContext
+    private EntityManager entityManager;
 
+    // 현재 트랜잭션의 잠금 대기를 1.5초로 제한
+    private void applyLockTimeout() {
+        entityManager.createNativeQuery("SET LOCAL lock_timeout = '1500ms'")
+                .executeUpdate();
+    }
 
     @Transactional
     public void confirm(Long userId, Long receiverId){
+        // 트랜잭션 잠금 대기 제한
+        applyLockTimeout();
 
         if (userId.equals(receiverId)) {
             throw new BusinessException(ErrorCode.BAD_REQUEST);
@@ -61,6 +76,13 @@ public class MatchingService {
 
         List<UserPreferences> lockedPrefs =
                 userPreferencesRepository.findAllByIdsForUpdate(ids);
+
+        // 이미 잠금 조회한 본인 설문으로 완료 여부 확인
+        UserPreferences myPreference = lockedPrefs.stream()
+                .filter(pref -> userId.equals(pref.getUserId()))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(ErrorCode.SURVEY_REQUIRED));
+        validateSurveyCompleted(myPreference);
 
         if (lockedPrefs.size() != 2) {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
@@ -75,6 +97,7 @@ public class MatchingService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.MATCH_REQUEST_NOT_FOUND));
 
         validateReceiverAvailable(myMatchRequest, receiverId, ErrorCode.NOT_CONFIRMABLE_STATUS);
+        validateReceiverCertification(receiverId, ErrorCode.NOT_CONFIRMABLE_STATUS);
 
         MatchStatus myStatus = myMatchRequest.getStatusOf(userId);
         MatchStatus otherStatus = myMatchRequest.getStatusOf(receiverId);
@@ -91,11 +114,13 @@ public class MatchingService {
             if(myMatchRequest.isConfirmed()){
                 myMatchRequest.getUserHighPreferences().updateIsMatched();
                 myMatchRequest.getUserLowPreferences().updateIsMatched();
+
+                // 거절과 동일하게 매칭 관계를 먼저 변경한 뒤 채팅방 종료
+                // 두 사용자의 다른 요청을 한 쿼리로 id 순서대로 잠근 뒤 닫음(동시 확정 시 데드락 방지)
+                closeOtherMatchRequests(userId, receiverId, myMatchRequest);
+
                 chatService.closeChatRoomsByUserIdExceptMatchRequestId(userId, myMatchRequest.getId());
                 chatService.closeChatRoomsByUserIdExceptMatchRequestId(receiverId, myMatchRequest.getId());
-
-                closeOtherMatchRequests(userId, myMatchRequest);
-                closeOtherMatchRequests(receiverId, myMatchRequest);
             }
 
             return;
@@ -136,10 +161,19 @@ public class MatchingService {
 
     @Transactional
     public void heart(Long userId, Long receiverId){
+        applyLockTimeout();
+
         MatchRequests myMatchRequest = matchRepository.findByIds(userId, receiverId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.MATCH_REQUEST_NOT_FOUND));
 
         validateReceiverAvailable(myMatchRequest, receiverId, ErrorCode.NOT_HEARTABLE_STATUS);
+        validateReceiverCertification(receiverId, ErrorCode.NOT_HEARTABLE_STATUS);
+
+        // 나 또는 상대가 이미 다른 사람과 최종 확정됐으면 하트 거부
+        // (확정 처리와 추천이 겹쳐 CLOSED되지 않고 남은 매칭 요청 방어)
+        if (userPreferencesRepository.existsByUserIdInAndIsMatchedTrue(List.of(userId, receiverId))) {
+            throw new BusinessException(ErrorCode.NOT_HEARTABLE_STATUS);
+        }
 
         MatchStatus myStatus = myMatchRequest.getStatusOf(userId);
         MatchStatus otherStatus = myMatchRequest.getStatusOf(receiverId);
@@ -172,6 +206,7 @@ public class MatchingService {
 
     @Transactional
     public void reject(Long userId, Long receiverId){
+        applyLockTimeout();
 
         MatchRequests targetMatchRequest = matchRepository.findByIds(userId, receiverId)
                 .orElseThrow(()->new BusinessException(ErrorCode.MATCH_REQUEST_NOT_FOUND));
@@ -208,7 +243,7 @@ public class MatchingService {
 
         // 조회를 위한 날짜 확인
         // 오늘 추천받은 카드들은 상태 관계없이 조회하기 위함(탈퇴/제재 등의 사유로 인한 카드는 예외)
-        LocalDate now = LocalDate.now(ZoneId.of("Asia/Seoul"));
+        LocalDate now = LocalDate.now(clock);
 
         LocalDateTime startOfToday = now.atStartOfDay();
         LocalDateTime startOfTomorrow = now.plusDays(1).atStartOfDay();
@@ -281,6 +316,7 @@ public class MatchingService {
 
     @Transactional
     public void match(Long userId){
+        applyLockTimeout();
 
         // 가장 먼저 본인 preferences 잠금
         UserPreferences myPreference;
@@ -290,13 +326,15 @@ public class MatchingService {
             myPreference =
                     userPreferencesRepository.findByUserIdForUpdate(userId)
                             .orElseThrow(() ->
-                                    new BusinessException(ErrorCode.USER_NOT_FOUND));
+                                    new BusinessException(ErrorCode.SURVEY_REQUIRED));
         } catch (PessimisticLockingFailureException e) {
             throw new BusinessException(
                     ErrorCode.MATCH_IN_PROGRESS
             );
         }
 
+        // 잠금 조회한 설문으로 완료 여부 확인
+        validateSurveyCompleted(myPreference);
 
         // User 데이터
         Users me = myPreference.getUser();
@@ -308,7 +346,9 @@ public class MatchingService {
         }
 
         // 오늘 이미 매칭을 돌렸는지 확인
-        LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+        LocalDateTime now = LocalDateTime.now(clock);
+        LocalDate today = now.toLocalDate();
+        String semester = SemesterUtils.currentSemester(clock);
 
         LocalDateTime startOfToday = today.atStartOfDay();
         LocalDateTime startOfTomorrow = today.plusDays(1).atStartOfDay();
@@ -332,6 +372,8 @@ public class MatchingService {
         List<MatchRequests> candidates =
                 matchRepository.findAvailableCandidates(
                         userId,
+                        semester,
+                        now,
                         PageRequest.of(0, 30)
                 );
 
@@ -353,6 +395,8 @@ public class MatchingService {
                 gender,
                 smokingStatus,
                 vector,
+                semester,
+                now,
                 10
             );
 
@@ -367,23 +411,17 @@ public class MatchingService {
             // 후보자가 추가되었으면 저장 및 후보자 재탐색 수행
             if(!newMatchRequests.isEmpty()) {
 
-                // 추가된 후보자들을 저장
-                // 중복 예외 방지를 위한 코드
-                for (MatchRequests newMatchRequest : newMatchRequests) {
-                    matchRepository.insertCandidateIfAbsent(
-                            newMatchRequest.getUserLow().getId(),
-                            newMatchRequest.getUserHigh().getId(),
-                            newMatchRequest.getUserLowPreferences().getUserId(),
-                            newMatchRequest.getUserHighPreferences().getUserId(),
-                            newMatchRequest.getMatchPercentage()
-                    );
-                }
+                // 추가된 후보자들을 한 번의 INSERT로 저장
+                // 이미 존재하는 쌍은 ON CONFLICT로 건너뜀
+                insertCandidatesIfAbsent(newMatchRequests, now);
 
 
                 // 후보자들을 다시 정렬해 탐색
                 candidates =
                         matchRepository.findAvailableCandidates(
                                 userId,
+                                semester,
+                                now,
                                 PageRequest.of(0, 30)
                         );
             }
@@ -404,6 +442,8 @@ public class MatchingService {
                     userId,
                     gender,
                     vector,
+                    semester,
+                    now,
                     10
             );
 
@@ -419,23 +459,17 @@ public class MatchingService {
             // 후보자가 추가되었으면 저장 및 후보자 재탐색 수행
             if(!newMatchRequests.isEmpty()) {
 
-                // 추가된 후보자들을 저장
-                // 중복 예외 방지를 위한 코드
-                for (MatchRequests newMatchRequest : newMatchRequests) {
-                    matchRepository.insertCandidateIfAbsent(
-                            newMatchRequest.getUserLow().getId(),
-                            newMatchRequest.getUserHigh().getId(),
-                            newMatchRequest.getUserLowPreferences().getUserId(),
-                            newMatchRequest.getUserHighPreferences().getUserId(),
-                            newMatchRequest.getMatchPercentage()
-                    );
-                }
+                // 추가된 후보자들을 한 번의 INSERT로 저장
+                // 이미 존재하는 쌍은 ON CONFLICT로 건너뜀
+                insertCandidatesIfAbsent(newMatchRequests, now);
 
 
                 // 후보자들을 다시 정렬해 탐색
                 candidates =
                         matchRepository.findAvailableCandidates(
                                 userId,
+                                semester,
+                                now,
                                 PageRequest.of(0, 30)
                         );
             }
@@ -460,7 +494,7 @@ public class MatchingService {
             }
 
             int updatedCount =
-                    recommendCandidateIfAvailable(candidate, userId);
+                    recommendCandidateIfAvailable(candidate, userId, semester, now);
 
             // 후보자 업데이트를 실패하면,
             // 추천 후보자 수를 늘리지 않고 continue
@@ -484,8 +518,37 @@ public class MatchingService {
 
 
         // 오늘 매칭을 돌렸음을 update
-        myPreference.updateIsRerolled();
+        myPreference.updateIsRerolled(now);
 
+    }
+
+    // 새 후보자 MatchRequest들을 배열로 펼쳐 한 번의 INSERT로 저장하는 함수
+    // 후보자마다 INSERT를 따로 보내지 않도록 묶어서 DB 왕복을 1회로 줄임
+    private void insertCandidatesIfAbsent(List<MatchRequests> newMatchRequests, LocalDateTime now) {
+        int size = newMatchRequests.size();
+        Long[] userLowIds = new Long[size];
+        Long[] userHighIds = new Long[size];
+        Long[] userLowPreferencesIds = new Long[size];
+        Long[] userHighPreferencesIds = new Long[size];
+        Double[] matchPercentages = new Double[size];
+
+        for (int i = 0; i < size; i++) {
+            MatchRequests newMatchRequest = newMatchRequests.get(i);
+            userLowIds[i] = newMatchRequest.getUserLow().getId();
+            userHighIds[i] = newMatchRequest.getUserHigh().getId();
+            userLowPreferencesIds[i] = newMatchRequest.getUserLowPreferences().getUserId();
+            userHighPreferencesIds[i] = newMatchRequest.getUserHighPreferences().getUserId();
+            matchPercentages[i] = newMatchRequest.getMatchPercentage();
+        }
+
+        matchRepository.insertCandidatesIfAbsent(
+                userLowIds,
+                userHighIds,
+                userLowPreferencesIds,
+                userHighPreferencesIds,
+                matchPercentages,
+                now
+        );
     }
 
     // L2로 뽑아온 후보자들을 MatchRequest에 저장시키기 위한 함수
@@ -629,12 +692,31 @@ public class MatchingService {
         }
     }
 
+    // 이미 조회한 설문은 추가 쿼리 없이 확인
+    private void validateSurveyCompleted(UserPreferences userPreferences) {
+        if (!Boolean.TRUE.equals(userPreferences.getIsCompleted())) {
+            throw new BusinessException(ErrorCode.SURVEY_REQUIRED);
+        }
+    }
+
+    // 추천 이후 인증이 만료되었으면 하트·확정 거부
+    private void validateReceiverCertification(Long receiverId, ErrorCode errorCode) {
+        if (!certificationRepository.existsApprovedCertification(
+                receiverId,
+                SemesterUtils.currentSemester(clock),
+                LocalDateTime.now(clock)
+        )) {
+            throw new BusinessException(errorCode);
+        }
+    }
+
 
     // 최종 매칭 확정 시 확정된 MatchRequest를 제외한
-    // 사용자의 다른 MatchRequest 상태를 일괄적으로 CLOSED 처리
-    private void closeOtherMatchRequests(Long userId, MatchRequests confirmedMatchRequest){
-        matchRepository.closeOtherMatchRequestsForUser(
+    // 두 사용자의 다른 MatchRequest 상태를 한 번에 CLOSED 처리
+    private void closeOtherMatchRequests(Long userId, Long receiverId, MatchRequests confirmedMatchRequest){
+        matchRepository.closeOtherMatchRequestsForUsers(
                 userId,
+                receiverId,
                 confirmedMatchRequest.getId()
         );
     }
@@ -644,14 +726,14 @@ public class MatchingService {
     // 성공 실패 여부를 반환
     private int recommendCandidateIfAvailable(
             MatchRequests candidate,
-            Long userId
+            Long userId,
+            String semester,
+            LocalDateTime recommendedAt
     ) {
-        LocalDateTime recommendedAt =
-                LocalDateTime.now(ZoneId.of("Asia/Seoul"));
-
         return matchRepository.recommendCandidateIfAvailable(
                 candidate.getId(),
                 userId,
+                semester,
                 recommendedAt
         );
     }
@@ -662,8 +744,20 @@ public class MatchingService {
     // 단, 양쪽 모두 최종 확정된 MatchRequest는 제외
     @Transactional
     public void closeAllMatchRequestsByUserId(Long userId){
-        chatService.closeChatRoomsByUserId(userId);
+        applyLockTimeout();
+
+        // 1. confirm/match()/설문 수정처럼 사용자의 설문 행을 가장 먼저 잠금
+        //    → 같은 사용자가 포함된 확정 처리와 순서대로 실행되어 데드락 방지
+        //    → NOWAIT이 아닌 대기 버전(lock_timeout까지): 사용자의 match()가 잠깐 잡고 있어도 기다림
+        //    → 설문이 없는 사용자는 매칭 요청도 없으므로 잠글 행이 없으면 그대로 진행
+        userPreferencesRepository.findByUserIdForUpdateWaiting(userId);
+
+        // 2. 매칭 요청을 먼저 닫음(id 순서로 잠금)
         matchRepository.closeUnconfirmedMatchRequestsForUser(userId);
+
+        // 3. 채팅방은 마지막에 닫음(엔티티 변경 → 커밋 시 UPDATE)
+        //    → 확정 처리와 같은 테이블 순서(match_requests → chat_rooms)
+        chatService.closeChatRoomsByUserId(userId);
     }
 
 

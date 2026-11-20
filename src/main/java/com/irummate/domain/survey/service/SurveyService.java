@@ -17,6 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -31,8 +33,7 @@ public class SurveyService {
     @Transactional(readOnly = true)
     public UserPreferencesResponseDto getSurveyStatus(Long userId){
 
-        UserPreferences userPreferences = userPreferencesRepository.findByUserId(userId)
-                .orElseThrow(()->new BusinessException(ErrorCode.SURVEY_NOT_FOUND));
+        UserPreferences userPreferences = getCompletedSurvey(userId);
 
 
         return UserPreferencesDtoMapper.toDto(userPreferences);
@@ -41,7 +42,7 @@ public class SurveyService {
     @Transactional
     public void saveSurveyStatus(Long userId, UserPreferencesRequestDto requestDto){
 
-        Users user = usersRepository.findById(userId)
+        Users user = usersRepository.findByIdForUpdate(userId)
                 .orElseThrow(()->new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         if(userPreferencesRepository.findByUserId(userId).isPresent()) {
@@ -65,8 +66,10 @@ public class SurveyService {
     @Transactional
     public UserPreferencesResponseDto updateSurveyStatus(Long userId, UserPreferencesRequestDto requestDto){
 
-        UserPreferences userPreferences = userPreferencesRepository.findByUserId(userId)
-                .orElseThrow(()->new BusinessException(ErrorCode.SURVEY_NOT_FOUND));
+        // 행 잠금 후 isMatched를 검사해야 동시에 커밋된 최종 확정(is_matched=true)을 덮어쓰지 않음
+        // 잠금 대기 없이 실패(NOWAIT)하면 PessimisticLockingFailureException → 409
+        UserPreferences userPreferences = requireCompleted(
+                userPreferencesRepository.findByUserIdForUpdate(userId));
 
         validateSurveyEditable(userPreferences);
         validateVisibleProfileFields(requestDto);
@@ -77,12 +80,28 @@ public class SurveyService {
                 requestDto.getSmokingStatus(),
                 requestDto.getIntroduce(),
                 surveyAnswers,
-                requestDto.getVisibleProfileFields()
+                requestDto.getVisibleProfileFields(),
+                LocalDateTime.now(clock)
         );
 
         userPreferencesRepository.saveAndFlush(userPreferences);
 
         return UserPreferencesDtoMapper.toDto(userPreferences);
+    }
+
+    // 조회한 설문으로 완료 여부까지 확인
+    private UserPreferences getCompletedSurvey(Long userId) {
+        return requireCompleted(userPreferencesRepository.findByUserId(userId));
+    }
+
+    private UserPreferences requireCompleted(Optional<UserPreferences> found) {
+        UserPreferences userPreferences = found
+                .orElseThrow(() -> new BusinessException(ErrorCode.SURVEY_REQUIRED));
+
+        if (!Boolean.TRUE.equals(userPreferences.getIsCompleted())) {
+            throw new BusinessException(ErrorCode.SURVEY_REQUIRED);
+        }
+        return userPreferences;
     }
 
     private void validateSurveyEditable(UserPreferences userPreferences) {

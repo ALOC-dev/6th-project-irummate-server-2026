@@ -24,13 +24,13 @@ import java.util.List;
 public class GlobalExceptionController {
 
     // 요청 관리 Handler
-    // 공지 API의 JSON 형식 오류를 400으로 처리
+    // JSON 형식 오류를 공통 400 응답으로 처리
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<GlobalApiResponse<?>> handleInputFormat(Exception e, HttpServletRequest request) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
         boolean notice = "/api/notices".equals(path) || "/internal/notices".equals(path);
         if (!notice) {
-            return handleException(e);
+            log.warn("Invalid request body: {}", e.getClass().getSimpleName());
         }
         return ResponseEntity.badRequest().body(GlobalApiResponse.error(
                 HttpStatus.BAD_REQUEST, "요청 값이나 형식이 올바르지 않습니다.", null));

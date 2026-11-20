@@ -7,13 +7,16 @@ import lombok.*;
 import org.hibernate.annotations.Array;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 
 @Entity
+@EntityListeners(AuditingEntityListener.class)
 @Getter
 @Table(name = "user_preferences")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -56,12 +59,6 @@ public class UserPreferences {
     @Column(name = "lifestyle_vector", columnDefinition = "vector(9)")
     private float[] lifestyleVector = new float[9];
 
-    @PreUpdate
-    public void onUpdate() {
-        convertToNormalizedVector();
-        this.updatedAt = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
-    }
-
     private void convertToNormalizedVector() {
         this.lifestyleVector[0] = normalize(this.answers.getBedtime(), 1, 5);
         this.lifestyleVector[1] = normalize(this.answers.getSnoring(), 1, 5);
@@ -101,23 +98,36 @@ public class UserPreferences {
     @Column(name = "is_matched", nullable = false)
     private Boolean isMatched = false;
 
+    // 생성 시각(Clock 기준 자동 기록, JpaAuditingConfig)
+    @CreatedDate
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
+    // 행이 변경될 때마다 갱신(설문 외 rerolledAt, isMatched 변경 포함)
+    // Clock 기준 자동 기록(JpaAuditingConfig)
+    @LastModifiedDate
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
     @Column(name = "rerolled_at")
     private LocalDateTime rerolledAt;
 
+    // 설문 내용이 마지막으로 저장(최초 제출/수정)된 시각
+    // 내부 기록용으로 응답에는 노출하지 않음
+    @Column(name = "survey_updated_at")
+    private LocalDateTime surveyUpdatedAt;
+
     @PrePersist
     public void onCreate() {
         convertToNormalizedVector();
-        this.createdAt = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
-        this.updatedAt = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+        // 엔티티 리스너(AuditingEntityListener)가 엔티티 콜백보다 먼저 실행되므로(JPA 명세)
+        // 이 시점에 createdAt이 이미 Clock 기준으로 채워져 있음
+        if (this.surveyUpdatedAt == null) {
+            this.surveyUpdatedAt = this.createdAt;
+        }
     }
 
-    public void updateIsRerolled() {this.rerolledAt = LocalDateTime.now(ZoneId.of("Asia/Seoul"));}
+    public void updateIsRerolled(LocalDateTime now) {this.rerolledAt = now;}
 
     public void updateIsMatched() {
         this.isMatched = true;
@@ -126,11 +136,15 @@ public class UserPreferences {
     public void updatePreferences(Integer smokingStatus,
                                   String introduce,
                                   SurveyAnswers answers,
-                                  List<SurveyAnswerField> visibleProfileFields) {
+                                  List<SurveyAnswerField> visibleProfileFields,
+                                  LocalDateTime now) {
         this.smokingStatus = smokingStatus;
         this.introduce = introduce;
         this.answers = answers;
         this.visibleProfileFields = visibleProfileFields;
+        // 설문이 바뀔 때만 벡터 재계산 및 설문 수정 시각 기록
+        convertToNormalizedVector();
+        this.surveyUpdatedAt = now;
     }
 
 }

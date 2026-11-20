@@ -4,7 +4,6 @@ import com.irummate.domain.survey.dto.UserPreferencesRequestDto;
 import com.irummate.domain.survey.dto.UserPreferencesResponseDto;
 import com.irummate.domain.survey.service.SurveyService;
 import com.irummate.global.aop.RequiresDetails;
-import com.irummate.global.aop.RequiresSurvey;
 import com.irummate.global.aop.RequiresSurveyDate;
 import com.irummate.global.response.GlobalApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -56,12 +55,10 @@ public class SurveyController {
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "설문 내용 조회 성공"),
             @ApiResponse(responseCode = "401", description = "인증이 필요합니다."),
-            @ApiResponse(responseCode = "403", description = "설문 작성이 필요합니다."),
-            @ApiResponse(responseCode = "404", description = "설문 내역을 찾을 수 없습니다.")
+            @ApiResponse(responseCode = "403", description = "기본 정보 또는 설문 작성이 필요합니다.")
     })
     @GetMapping("/me")
     @RequiresDetails
-    @RequiresSurvey
     public ResponseEntity<GlobalApiResponse<?>> getUserPreferences(
             @AuthenticationPrincipal Long userId
     ){
@@ -76,13 +73,12 @@ public class SurveyController {
             @ApiResponse(responseCode = "200", description = "설문 수정 성공"),
             @ApiResponse(responseCode = "400", description = "필수 항목 누락 / 값 범위 초과"),
             @ApiResponse(responseCode = "401", description = "인증이 필요합니다."),
-            @ApiResponse(responseCode = "403", description = "매칭 시작일 이후에는 설문을 수정할 수 없습니다."),
-            @ApiResponse(responseCode = "404", description = "설문 내역 또는 매칭 날짜를 찾을 수 없습니다."),
+            @ApiResponse(responseCode = "403", description = "기본 정보 또는 설문 작성이 필요하거나, 매칭 시작일 이후에는 수정할 수 없습니다."),
+            @ApiResponse(responseCode = "404", description = "매칭 날짜를 찾을 수 없습니다."),
             @ApiResponse(responseCode = "409", description = "이미 매칭이 확정된 상태입니다.")
     })
     @PatchMapping("/me")
     @RequiresDetails
-    @RequiresSurvey
     public ResponseEntity<GlobalApiResponse<?>> updateUserPreferences(
             @AuthenticationPrincipal Long userId,
             @Valid @RequestBody UserPreferencesRequestDto requestDto
