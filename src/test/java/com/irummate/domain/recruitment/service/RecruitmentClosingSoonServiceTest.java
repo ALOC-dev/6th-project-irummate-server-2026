@@ -1,5 +1,7 @@
 package com.irummate.domain.recruitment.service;
 
+import com.irummate.domain.chat.service.RecruitmentChatRoomService;
+
 import com.irummate.domain.recruitment.dto.RecruitmentSort;
 import com.irummate.domain.recruitment.entity.*;
 import com.irummate.domain.recruitment.repository.RecruitmentBookmarksRepository;
@@ -27,7 +29,7 @@ import static org.mockito.Mockito.*;
 class RecruitmentClosingSoonServiceTest {
     private final RecruitmentsRepository repository = mock(RecruitmentsRepository.class);
     private final RecruitmentService service = new RecruitmentService(repository,
-            mock(RecruitmentParticipantsRepository.class), mock(UsersRepository.class), mock(RecruitmentBookmarksRepository.class));
+            mock(RecruitmentParticipantsRepository.class), mock(UsersRepository.class), mock(RecruitmentBookmarksRepository.class), mock(RecruitmentChatRoomService.class));
     private static final LocalDateTime NOW = LocalDateTime.now(ZoneId.of("Asia/Seoul")).withNano(123456000);
 
     @Test

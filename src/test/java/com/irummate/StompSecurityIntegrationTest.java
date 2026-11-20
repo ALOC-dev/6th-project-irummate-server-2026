@@ -1,5 +1,11 @@
 package com.irummate;
 
+import com.irummate.domain.chat.entity.ChatRoomType;
+import com.irummate.domain.recruitment.dto.RecruitmentCreateRequestDto;
+import com.irummate.domain.recruitment.dto.RecruitmentParticipantRemoveRequestDto;
+import com.irummate.domain.recruitment.entity.RecruitmentCategory;
+import com.irummate.domain.recruitment.service.RecruitmentParticipationService;
+import com.irummate.domain.recruitment.service.RecruitmentService;
 import com.irummate.global.security.AccessTokenAuthenticationService;
 import jakarta.persistence.EntityManagerFactory;
 import org.hibernate.SessionFactory;
@@ -9,6 +15,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.MediaType;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.messaging.MessageDeliveryException;
 import org.springframework.messaging.simp.stomp.StompFrameHandler;
 import org.springframework.messaging.simp.stomp.StompHeaders;
 import org.springframework.messaging.simp.stomp.StompSession;
@@ -23,6 +30,8 @@ import org.springframework.web.socket.messaging.WebSocketStompClient;
 
 import java.lang.reflect.Type;
 import java.net.URI;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -44,6 +53,8 @@ class StompSecurityIntegrationTest extends SecurityIntegrationSupport {
     @Autowired SimpUserRegistry users;
     @Autowired AccessTokenAuthenticationService authentication;
     @Autowired EntityManagerFactory entityManagerFactory;
+    @Autowired RecruitmentService recruitmentService;
+    @Autowired RecruitmentParticipationService recruitmentParticipation;
     private final List<WebSocketStompClient> clients = new ArrayList<>();
     private final List<Connection> connections = new ArrayList<>();
 
@@ -62,8 +73,24 @@ class StompSecurityIntegrationTest extends SecurityIntegrationSupport {
 
     @AfterEach
     void closeSockets() {
-        connections.forEach(c -> { if (c.session != null && c.session.isConnected()) c.session.disconnect(); });
-        clients.forEach(WebSocketStompClient::stop);
+        try {
+            for (Connection connection : connections) {
+                if (connection.session == null || !connection.session.isConnected()) {
+                    continue;
+                }
+                try {
+                    connection.session.disconnect();
+                } catch (MessageDeliveryException exception) {
+                    // The broker can close the socket between the connection check and DISCONNECT.
+                    if (!(exception.getCause() instanceof IllegalStateException cause)
+                            || !"Message will not be sent because the WebSocket session has been closed".equals(cause.getMessage())) {
+                        throw exception;
+                    }
+                }
+            }
+        } finally {
+            clients.forEach(WebSocketStompClient::stop);
+        }
     }
 
     @Test
@@ -133,6 +160,70 @@ class StompSecurityIntegrationTest extends SecurityIntegrationSupport {
         assertThat(json.readTree(roomMessage).path("senderId").asString()).isEqualTo(hashIds.encode(ALICE));
         assertThat(json.readTree(notification).path("message").asString()).isEqualTo("hello");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM chat_messages", Long.class)).isEqualTo(1);
+    }
+
+    @Test
+    void removedRecruitmentMemberStopsReceivingEventsOnBothOpenSockets() throws Exception {
+        long recruitmentId = recruitmentService.createRecruitment(ALICE, RecruitmentCreateRequestDto.builder()
+                .category(RecruitmentCategory.MEAL).title("Group chat test").maxParticipants(2)
+                .activityAt(LocalDateTime.now(ZoneId.of("Asia/Seoul")).plusDays(1)).build()).getRecruitmentId();
+        long groupRoom = chatService.getChatRooms(ALICE).getRooms().stream()
+                .filter(room -> room.getType() == ChatRoomType.RECRUITMENT).findFirst().orElseThrow().getRoomId();
+        chatService.sendMessage(groupRoom, ALICE, "history before join");
+        recruitmentParticipation.joinRecruitment(BOB, recruitmentId);
+        recruitmentParticipation.joinRecruitment(OUTSIDER, recruitmentId);
+        assertThat(chatService.getTotalUnreadCountValue(BOB)).isZero();
+        assertThat(chatService.getMessages(groupRoom, BOB, null, 10).getMessages()).hasSize(1);
+
+        var host = connect(access(ALICE, aliceSession));
+        var hostOtherDevice = connect(access(ALICE, aliceSession));
+        var removed = connect(access(BOB, bobSession));
+        var removedOtherDevice = connect(access(BOB, bobSession));
+        String events = "/user/queue/chat-events";
+        var hostEvents = subscribe(hostOtherDevice, ALICE, events);
+        var removedEvents = subscribe(removed, BOB, events);
+        var removedOtherEvents = subscribe(removedOtherDevice, BOB, events);
+        var removedNotifications = subscribe(removed, BOB, "/user/queue/chat-notifications");
+        var removedOtherNotifications = subscribe(removedOtherDevice, BOB, "/user/queue/chat-notifications");
+        var chatErrors = subscribe(removed, BOB, "/user/queue/chat-errors");
+        var matchEvents = subscribe(removed, BOB, "/topic/room/" + roomId);
+        host.session.send(chatHeaders(), ("{\"roomId\":" + groupRoom + ",\"message\":\"before removal\"}")
+                .getBytes(StandardCharsets.UTF_8));
+        assertThat(hostEvents.poll(5, TimeUnit.SECONDS)).contains("before removal");
+        assertThat(removedEvents.poll(5, TimeUnit.SECONDS)).contains("before removal");
+        assertThat(removedOtherEvents.poll(5, TimeUnit.SECONDS)).contains("before removal");
+        assertThat(removedNotifications.poll(5, TimeUnit.SECONDS)).contains("before removal", "\"unreadCount\":1");
+        assertThat(removedOtherNotifications.poll(5, TimeUnit.SECONDS)).contains("before removal");
+
+        recruitmentParticipation.removeParticipant(ALICE, recruitmentId, RecruitmentParticipantRemoveRequestDto.builder()
+                .targetUserId(hashIds.encode(BOB)).removalReason("Group test removal").build());
+
+        host.session.send(chatHeaders(), ("{\"roomId\":" + groupRoom + ",\"message\":\"after removal\"}")
+                .getBytes(StandardCharsets.UTF_8));
+        String after = hostEvents.poll(5, TimeUnit.SECONDS);
+        assertThat(after).contains("after removal");
+        long messageId = json.readTree(after).path("messageId").asLong();
+        HttpRequest read = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/chat/rooms/" + groupRoom + "/read"))
+                .header("Authorization", "Bearer " + access(OUTSIDER, outsiderSession))
+                .header("Content-Type", "application/json")
+                .method("PATCH", HttpRequest.BodyPublishers.ofString("{\"lastReadMessageId\":" + messageId + "}"))
+                .timeout(Duration.ofSeconds(5)).build();
+        assertThat(http.send(read, HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(200);
+        assertThat(hostEvents.poll(5, TimeUnit.SECONDS)).contains("\"type\":\"READ\"");
+
+        assertThat(request("GET", "/api/chat/rooms/" + groupRoom + "/messages", access(BOB, bobSession), null).statusCode())
+                .isEqualTo(403);
+        removed.session.send(chatHeaders(), ("{\"roomId\":" + groupRoom + ",\"message\":\"removed sender\"}")
+                .getBytes(StandardCharsets.UTF_8));
+        assertThat(chatErrors.poll(5, TimeUnit.SECONDS)).contains("NOT_CHAT_PARTICIPANT");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM chat_messages WHERE room_id = ?", Long.class, groupRoom))
+                .isEqualTo(3);
+        sendChat(host, "other room still works");
+        assertThat(matchEvents.poll(5, TimeUnit.SECONDS)).contains("other room still works");
+        assertThat(removedEvents.poll(300, TimeUnit.MILLISECONDS)).isNull();
+        assertThat(removedOtherEvents).isEmpty();
+        assertThat(removedNotifications).isEmpty();
+        assertThat(removedOtherNotifications).isEmpty();
     }
 
     @Test
@@ -270,6 +361,7 @@ class StompSecurityIntegrationTest extends SecurityIntegrationSupport {
     }
 
     private BlockingQueue<String> subscribe(Connection connection, long userId, String destination) {
+        long existingSubscriptions = countSubscriptions(userId, destination);
         BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         connection.session.subscribe(destination, new StompFrameHandler() {
             @Override public Type getPayloadType(StompHeaders headers) { return byte[].class; }
@@ -277,12 +369,14 @@ class StompSecurityIntegrationTest extends SecurityIntegrationSupport {
                 messages.add(new String((byte[]) payload, StandardCharsets.UTF_8));
             }
         });
-        await().atMost(Duration.ofSeconds(5)).until(() -> {
-            var user = users.getUser(Long.toString(userId));
-            return user != null && user.getSessions().stream().flatMap(s -> s.getSubscriptions().stream())
-                    .anyMatch(s -> destination.equals(s.getDestination()));
-        });
+        await().atMost(Duration.ofSeconds(5)).until(() -> countSubscriptions(userId, destination) > existingSubscriptions);
         return messages;
+    }
+
+    private long countSubscriptions(long userId, String destination) {
+        var user = users.getUser(Long.toString(userId));
+        return user == null ? 0 : user.getSessions().stream().flatMap(session -> session.getSubscriptions().stream())
+                .filter(subscription -> destination.equals(subscription.getDestination())).count();
     }
 
     private static class Connection {

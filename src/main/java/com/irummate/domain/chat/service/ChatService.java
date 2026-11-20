@@ -1,5 +1,6 @@
 package com.irummate.domain.chat.service;
 
+import com.irummate.domain.chat.dto.ChatMemberReadCursor;
 import com.irummate.domain.chat.dto.ChatMessageResponseDto;
 import com.irummate.domain.chat.dto.ChatMessagesResponseDto;
 import com.irummate.domain.chat.dto.ChatNotificationDto;
@@ -7,31 +8,35 @@ import com.irummate.domain.chat.dto.ChatReadResponseDto;
 import com.irummate.domain.chat.dto.ChatReadEventDto;
 import com.irummate.domain.chat.dto.ChatReadResult;
 import com.irummate.domain.chat.dto.ChatRoomLastMessageDto;
-import com.irummate.domain.chat.dto.ChatRoomPartnerDto;
+import com.irummate.domain.chat.dto.ChatRoomListItemDto;
 import com.irummate.domain.chat.dto.ChatRoomResponseDto;
 import com.irummate.domain.chat.dto.ChatRoomsResponseDto;
 import com.irummate.domain.chat.dto.ChatRoomUnreadCountDto;
 import com.irummate.domain.chat.dto.ChatUnreadCountResponseDto;
 import com.irummate.domain.chat.entity.ChatMessage;
 import com.irummate.domain.chat.entity.ChatRoom;
-import com.irummate.domain.chat.entity.ChatRoomStatus;
+import com.irummate.domain.chat.entity.ChatRoomMember;
+import com.irummate.domain.chat.entity.ChatRoomType;
 import com.irummate.domain.chat.repository.ChatMessageRepository;
+import com.irummate.domain.chat.repository.ChatRoomMemberRepository;
 import com.irummate.domain.chat.repository.ChatRoomRepository;
 import com.irummate.domain.matching.entity.MatchRequests;
 import com.irummate.domain.matching.entity.MatchStatus;
 import com.irummate.domain.matching.repository.MatchRepository;
+import com.irummate.domain.user.entity.UserRole;
 import com.irummate.domain.user.entity.UserStatus;
 import com.irummate.domain.user.entity.Users;
 import com.irummate.domain.user.repository.UsersRepository;
 import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
 import com.irummate.global.util.HashIdsUtils;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Map;
 import java.util.Comparator;
 import java.util.function.Function;
@@ -46,16 +51,22 @@ public class ChatService {
     private static final int MAX_MESSAGE_PAGE_SIZE = 100;
 
     private final ChatRoomRepository chatRoomRepository;
+    private final ChatRoomAccessService chatRoomAccessService;
+    private final ChatRoomMemberRepository chatRoomMemberRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final UsersRepository usersRepository;
     private final HashIdsUtils hashIdsUtils;
     private final MatchRepository matchRepository;
 
     public ChatService(ChatRoomRepository chatRoomRepository,
+                       ChatRoomAccessService chatRoomAccessService,
+                       ChatRoomMemberRepository chatRoomMemberRepository,
                        ChatMessageRepository chatMessageRepository,
                        UsersRepository usersRepository,
                        HashIdsUtils hashIdsUtils, MatchRepository matchRepository) {
         this.chatRoomRepository = chatRoomRepository;
+        this.chatRoomAccessService = chatRoomAccessService;
+        this.chatRoomMemberRepository = chatRoomMemberRepository;
         this.chatMessageRepository = chatMessageRepository;
         this.usersRepository = usersRepository;
         this.hashIdsUtils = hashIdsUtils;
@@ -64,10 +75,11 @@ public class ChatService {
 
     @Transactional(readOnly = true)
     public ChatRoomsResponseDto getChatRooms(Long userId) {
-        List<ChatRoomPartnerDto> roomPartners = chatRoomRepository.findRoomPartnersByUserId(userId);
+        requireActiveUser(userId);
+        List<ChatRoomListItemDto> roomItems = chatRoomRepository.findRoomListItemsByUserId(userId);
 
-        List<Long> roomIds = roomPartners.stream()
-                .map(ChatRoomPartnerDto::roomId)
+        List<Long> roomIds = roomItems.stream()
+                .map(ChatRoomListItemDto::roomId)
                 .toList();
 
         if (roomIds.isEmpty()) {
@@ -89,23 +101,28 @@ public class ChatService {
                         ChatRoomUnreadCountDto::unreadCount
                 ));
 
-        List<ChatRoomResponseDto> rooms = roomPartners.stream()
+        List<ChatRoomResponseDto> rooms = roomItems.stream()
                 .map(room -> {
                     ChatRoomLastMessageDto lastMessage = lastMessageMap.get(room.roomId());
                     Long unreadCount = unreadCountMap.getOrDefault(room.roomId(), 0L);
+                    boolean matchRoom = room.type() == ChatRoomType.MATCH;
+                    var recruitment = matchRoom ? null : new ChatRoomResponseDto.RecruitmentInfo(
+                            room.recruitmentId(), room.recruitmentTitle(), room.recruitmentCategory(), room.participantCount());
 
                     return new ChatRoomResponseDto(
                             room.roomId(),
-                            hashIdsUtils.encode(room.partnerId()),
+                            room.type(),
+                            matchRoom ? hashIdsUtils.encode(room.partnerId()) : null,
                             room.partnerName(),
                             room.partnerProfileImageUrl(),
                             lastMessage == null ? null : lastMessage.lastMessage(),
                             lastMessage == null ? null : lastMessage.lastMessageTime(),
                             unreadCount.intValue(),
                             room.status(),
-                            toCardStatus(room.myMatchStatus(), room.partnerMatchStatus()),
-                            isConfirmedByMe(room.myMatchStatus()),
-                            canConfirm(room.myMatchStatus(), room.partnerMatchStatus())
+                            matchRoom ? toCardStatus(room.myMatchStatus(), room.partnerMatchStatus()) : null,
+                            matchRoom ? isConfirmedByMe(room.myMatchStatus()) : null,
+                            matchRoom ? canConfirm(room.myMatchStatus(), room.partnerMatchStatus()) : null,
+                            recruitment
                     );
                 })
                 .sorted(Comparator
@@ -131,8 +148,8 @@ public class ChatService {
 
     @Transactional(readOnly = true)
     public ChatMessagesResponseDto getMessages(Long roomId, Long userId, Long cursor, int size) {
-        validateRoomExists(roomId);
-        validateRoomParticipant(roomId, userId);
+        requireActiveUser(userId);
+        chatRoomAccessService.requireCurrentMember(roomId, userId);
         validateMessagePageSize(size);
 
         // size + 1개를 조회해서 다음 페이지가 있는지 판단한다.
@@ -142,32 +159,49 @@ public class ChatService {
                 ? chatMessageRepository.findByRoom_IdOrderByIdDesc(roomId, pageRequest)
                 : chatMessageRepository.findByRoom_IdAndIdLessThanOrderByIdDesc(roomId, cursor, pageRequest);
 
+        if (messages.isEmpty()) {
+            return new ChatMessagesResponseDto(List.of(), false);
+        }
+
+        boolean matchRoom = getChatRoom(roomId).getType() == ChatRoomType.MATCH;
+        List<ChatMemberReadCursor> readCursors = matchRoom
+                ? chatRoomMemberRepository.findReadCursorsByRoomId(roomId)
+                : List.of();
+        long myCursor = findReadCursor(readCursors, userId, true);
+        long partnerCursor = findReadCursor(readCursors, userId, false);
         boolean hasNext = messages.size() > size;
 
         List<ChatMessageResponseDto> responseMessages = messages.stream()
                 .limit(size)
-                .map(chatMessage -> ChatMessageResponseDto.from(
-                        chatMessage,
-                        hashIdsUtils.encode(chatMessage.getSender().getId())
-                ))
+                .map(chatMessage -> {
+                    Long senderId = chatMessage.getSender().getId();
+                    long readerCursor = userId.equals(senderId) ? partnerCursor : myCursor;
+                    Boolean isRead = matchRoom ? chatMessage.getId() <= readerCursor : null;
+                    return ChatMessageResponseDto.from(chatMessage, hashIdsUtils.encode(senderId), isRead);
+                })
                 .toList();
 
         return new ChatMessagesResponseDto(responseMessages, hasNext);
     }
 
+    private long findReadCursor(List<ChatMemberReadCursor> cursors, Long userId, boolean ownCursor) {
+        return cursors.stream()
+                .filter(cursor -> ownCursor == userId.equals(cursor.userId()))
+                .mapToLong(ChatMemberReadCursor::lastReadMessageId)
+                .findFirst()
+                .orElse(0L);
+    }
+
     @Transactional
-    public ChatReadResult markMessagesAsRead(Long roomId, Long userId) {
-        validateRoomExists(roomId);
-        validateRoomParticipant(roomId, userId);
+    public ChatReadResult markMessagesAsRead(Long roomId, Long userId, long lastReadMessageId) {
+        requireActiveUser(userId);
+        chatRoomAccessService.requireCurrentMember(roomId, userId);
 
-        Long lastReadMessageId = chatMessageRepository.findLastUnreadMessageId(roomId, userId)
-                .orElse(null);
-
-        if (lastReadMessageId == null) {
-            return new ChatReadResult(new ChatReadResponseDto(true), null);
+        if (lastReadMessageId <= 0 || !chatMessageRepository.existsByIdAndRoom_Id(lastReadMessageId, roomId)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
 
-        int updatedCount = chatMessageRepository.markUnreadMessagesAsRead(roomId, userId, lastReadMessageId);
+        int updatedCount = chatRoomMemberRepository.advanceReadCursor(roomId, userId, lastReadMessageId);
         if (updatedCount == 0) {
             return new ChatReadResult(new ChatReadResponseDto(true), null);
         }
@@ -188,7 +222,8 @@ public class ChatService {
 
     @Transactional(readOnly = true)
     public int getTotalUnreadCountValue(Long userId) {
-        return chatMessageRepository.countUnreadByParticipantId(userId);
+        requireActiveUser(userId);
+        return chatMessageRepository.countUnreadByCurrentMemberId(userId);
     }
 
     @Transactional(readOnly = true)
@@ -199,8 +234,11 @@ public class ChatService {
             ChatMessageResponseDto messageDto
     ) {
         Users sender = getUser(senderId);
-        int unreadCount = chatMessageRepository.countByRoom_IdAndSender_IdNotAndIsReadFalse(roomId, receiverId);
-        int totalUnreadCount = getTotalUnreadCountValue(receiverId);
+        int unreadCount = chatMessageRepository.countUnreadByRoomIds(List.of(roomId), receiverId).stream()
+                .findFirst()
+                .map(count -> count.unreadCount().intValue())
+                .orElse(0);
+        int totalUnreadCount = chatMessageRepository.countUnreadByCurrentMemberId(receiverId);
 
         return new ChatNotificationDto(
                 roomId,
@@ -217,50 +255,68 @@ public class ChatService {
     @Transactional
     public ChatMessageResponseDto sendMessage(Long roomId, Long senderId, String message) {
         validateSendRequest(roomId, senderId, message);
-        ChatRoom chatRoom = getChatRoom(roomId);
-        Users sender = getUser(senderId);
-        validateActiveUser(sender);
+        Users sender = requireActiveUser(senderId);
+        // Serialize inserts in the same room so a later ID cannot become visible before an earlier one.
+        ChatRoom chatRoom = chatRoomRepository.findByIdForUpdate(roomId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+        chatRoomAccessService.requireCurrentMember(roomId, senderId);
         validateSendable(chatRoom);
-        validateRoomParticipant(roomId, senderId);
 
         ChatMessage chatMessage = ChatMessage.create(chatRoom, sender, message.trim());
         ChatMessage savedMessage = chatMessageRepository.save(chatMessage);
 
-        return ChatMessageResponseDto.from(savedMessage, hashIdsUtils.encode(senderId));
+        Boolean isRead = chatRoom.getType() == ChatRoomType.MATCH ? Boolean.FALSE : null;
+        return ChatMessageResponseDto.from(savedMessage, hashIdsUtils.encode(senderId), isRead);
     }
 
     @Transactional(readOnly = true)
     public Long getPartnerId(Long roomId, Long userId) {
-        validateRoomExists(roomId);
+        chatRoomAccessService.requireCurrentMember(roomId, userId);
 
         return chatRoomRepository.findPartnerIdByRoomIdAndUserId(roomId, userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_CHAT_PARTICIPANT));
     }
 
-    @Transactional
-    public ChatRoom createChatRoomIfNotExists(Long matchRequestId) {
-        // 상호 HEART 상태가 되었을 때 matchRequestId 기준으로 채팅방을 한 번만 생성한다.
-        return chatRoomRepository.findByMatchRequest_Id(matchRequestId)
-                .orElseGet(() -> saveChatRoomOrFindExisting(matchRequestId));
+    @Transactional(readOnly = true)
+    public boolean isRecruitmentRoom(Long roomId) {
+        return chatRoomRepository.findTypeById(roomId).orElseThrow(() -> new BusinessException(ErrorCode.CHAT_ROOM_NOT_FOUND))
+                == ChatRoomType.RECRUITMENT;
     }
 
     @Transactional
-    public void closeChatRoomByMatchRequestId(Long matchRequestId) {
-        // 최종 매칭이 확정되면 기존 대화는 조회만 가능하도록 채팅방을 닫는다.
+    public ChatRoom createChatRoomIfNotExists(Long matchRequestId) {
+        // 방이 아직 없을 때도 매칭 요청 행을 잠가 동시 생성을 직렬화한다.
+        MatchRequests matchRequest = matchRepository.findByIdForUpdate(matchRequestId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MATCH_REQUEST_NOT_FOUND));
+        return chatRoomRepository.findByMatchRequest_Id(matchRequestId)
+                .orElseGet(() -> createMatchRoom(matchRequest));
+    }
+
+    private ChatRoom createMatchRoom(MatchRequests matchRequest) {
+        ChatRoom room = chatRoomRepository.save(ChatRoom.forMatch(matchRequest));
+        chatRoomMemberRepository.saveAll(List.of(
+                ChatRoomMember.join(room, matchRequest.getUserLow(), room.getCreatedAt()),
+                ChatRoomMember.join(room, matchRequest.getUserHigh(), room.getCreatedAt())
+        ));
+        return room;
+    }
+
+    @Transactional
+    public void closeMatchRoomByMatchRequestId(Long matchRequestId) {
         chatRoomRepository.findByMatchRequest_Id(matchRequestId)
                 .ifPresent(ChatRoom::close);
     }
 
     @Transactional
-    public void closeChatRoomsByUserId(Long userId) {
-        List<ChatRoom> chatRooms = chatRoomRepository.findAllByParticipantId(userId);
+    public void closeMatchRoomsByUserId(Long userId) {
+        List<ChatRoom> chatRooms = chatRoomRepository.findMatchRoomsByParticipantId(userId);
 
         chatRooms.forEach(ChatRoom::close);
     }
 
     @Transactional
-    public void closeChatRoomsByUserIdExceptMatchRequestId(Long userId, Long excludedMatchRequestId) {
-        List<ChatRoom> chatRooms = chatRoomRepository.findAllByParticipantId(userId);
+    public void closeOtherMatchRoomsByUserId(Long userId, Long excludedMatchRequestId) {
+        List<ChatRoom> chatRooms = chatRoomRepository.findMatchRoomsByParticipantId(userId);
 
         chatRooms.stream()
                 .filter(chatRoom -> !chatRoom.getMatchRequest().getId().equals(excludedMatchRequestId))
@@ -275,18 +331,6 @@ public class ChatService {
     private Users getUser(Long userId) {
         return usersRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-    }
-
-    private void validateRoomExists(Long roomId) {
-        if (!chatRoomRepository.existsById(roomId)) {
-            throw new BusinessException(ErrorCode.CHAT_ROOM_NOT_FOUND);
-        }
-    }
-
-    private void validateRoomParticipant(Long roomId, Long userId) {
-        if (userId == null || !chatRoomRepository.existsByRoomIdAndParticipantId(roomId, userId)) {
-            throw new BusinessException(ErrorCode.NOT_CHAT_PARTICIPANT);
-        }
     }
 
     private void validateMessagePageSize(int size) {
@@ -310,30 +354,17 @@ public class ChatService {
     }
 
     private void validateSendable(ChatRoom chatRoom) {
-        if (chatRoom.isClosed()) {
+        if (chatRoom.isClosed() || (chatRoom.getCloseAt() != null
+                && !chatRoom.getCloseAt().isAfter(LocalDateTime.now(ZoneId.of("Asia/Seoul"))))) {
             throw new BusinessException(ErrorCode.CHAT_ROOM_CLOSED);
         }
     }
 
-    private ChatRoom saveChatRoomOrFindExisting(Long matchRequestId) {
-        MatchRequests matchRequest = matchRepository.getReferenceById(matchRequestId);
-
-        try {
-            return chatRoomRepository.saveAndFlush(
-                    ChatRoom.builder()
-                            .matchRequest(matchRequest)
-                            .status(ChatRoomStatus.OPEN)
-                            .build()
-            );
-        } catch (DataIntegrityViolationException e) {
-            return chatRoomRepository.findByMatchRequest_Id(matchRequestId)
-                    .orElseThrow(() -> e);
-        }
-    }
-
-    private void validateActiveUser(Users user) {
-        if (user.getStatus() != UserStatus.ACTIVE) {
+    private Users requireActiveUser(Long userId) {
+        Users user = getUser(userId);
+        if (user.getStatus() != UserStatus.ACTIVE || user.getRole() != UserRole.USER) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
+        return user;
     }
 }

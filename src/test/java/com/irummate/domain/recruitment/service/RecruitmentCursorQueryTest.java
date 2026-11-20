@@ -1,5 +1,7 @@
 package com.irummate.domain.recruitment.service;
 
+import com.irummate.domain.chat.service.RecruitmentChatRoomService;
+
 import com.irummate.domain.recruitment.dto.RecruitmentSort;
 import com.irummate.domain.recruitment.entity.RecruitmentCategory;
 import com.irummate.domain.recruitment.entity.RecruitmentVisibility;
@@ -103,7 +105,7 @@ class RecruitmentCursorQueryTest {
         statistics.clear();
         try {
             RecruitmentService service = new RecruitmentService(repository, mock(RecruitmentParticipantsRepository.class),
-                    mock(UsersRepository.class), bookmarks);
+                    mock(UsersRepository.class), bookmarks, mock(RecruitmentChatRoomService.class));
             var response = new TransactionTemplate(transactionManager).execute(tx ->
                     service.getRecruitments(authorId, null, sort, null, null, null, 50));
 

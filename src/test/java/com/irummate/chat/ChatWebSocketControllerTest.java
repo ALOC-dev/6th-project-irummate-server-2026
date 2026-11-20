@@ -7,6 +7,7 @@ import com.irummate.domain.chat.dto.ChatMessageSendRequestDto;
 import com.irummate.domain.chat.dto.ChatNotificationDto;
 import com.irummate.domain.chat.controller.ChatWebSocketController;
 import com.irummate.domain.chat.service.ChatService;
+import com.irummate.domain.chat.service.RecruitmentChatDelivery;
 import com.irummate.global.jwt.WebSocketPrincipal;
 import com.irummate.global.util.HashIdsUtils;
 import com.irummate.global.exception.BusinessException;
@@ -37,7 +38,8 @@ class ChatWebSocketControllerTest {
         ChatWebSocketController controller = new ChatWebSocketController(
                 chatService,
                 messagingTemplate,
-                hashIdsUtils
+                hashIdsUtils,
+                mock(RecruitmentChatDelivery.class)
         );
         ChatMessageSendRequestDto request = mock(ChatMessageSendRequestDto.class);
         LocalDateTime createdAt = LocalDateTime.of(2026, 9, 24, 20, 0);
@@ -74,7 +76,8 @@ class ChatWebSocketControllerTest {
         ChatWebSocketController controller = new ChatWebSocketController(
                 chatService,
                 mock(SimpMessagingTemplate.class),
-                mock(HashIdsUtils.class)
+                mock(HashIdsUtils.class),
+                mock(RecruitmentChatDelivery.class)
         );
         ChatMessageSendRequestDto request = mock(ChatMessageSendRequestDto.class);
 

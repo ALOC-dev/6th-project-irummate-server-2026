@@ -1,5 +1,7 @@
 package com.irummate.domain.recruitment.service;
 
+import com.irummate.domain.chat.service.RecruitmentChatRoomService;
+
 import com.irummate.domain.recruitment.dto.RecruitmentCreateRequestDto;
 import com.irummate.domain.recruitment.dto.RecruitmentUpdateRequestDto;
 import com.irummate.domain.recruitment.entity.RecruitmentCategory;
@@ -68,7 +70,7 @@ class RecruitmentTextTest {
         RecruitmentsRepository recruitments = mock(RecruitmentsRepository.class);
         UsersRepository users = mock(UsersRepository.class);
         RecruitmentService service = new RecruitmentService(recruitments,
-                mock(RecruitmentParticipantsRepository.class), users, mock(RecruitmentBookmarksRepository.class));
+                mock(RecruitmentParticipantsRepository.class), users, mock(RecruitmentBookmarksRepository.class), mock(RecruitmentChatRoomService.class));
         when(users.findById(1L)).thenReturn(Optional.of(Users.builder().nickname("작성자").build()));
         when(recruitments.save(any(Recruitments.class))).thenAnswer(invocation -> {
             Recruitments saved = invocation.getArgument(0);
