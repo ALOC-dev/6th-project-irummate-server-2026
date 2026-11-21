@@ -59,7 +59,9 @@ dependencies {
 	runtimeOnly 'org.postgresql:postgresql'
 
 	// OpenAI
-	implementation 'com.openai:openai-java:4.101.0'
+	implementation('com.openai:openai-java:4.101.0') {
+		exclude group: 'io.swagger.core.v3', module: 'swagger-annotations'
+	}
 
 	// DB 스키마 변경 이력
 	// implementation 'org.springframework.boot:spring-boot-starter-flyway'
