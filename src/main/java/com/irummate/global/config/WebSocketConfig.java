@@ -1,6 +1,8 @@
 package com.irummate.global.config;
 
-import com.irummate.domain.chat.repository.ChatRoomRepository;
+import com.irummate.domain.chat.service.ChatRoomAccessService;
+import com.irummate.domain.chat.service.ChatSocketSessions;
+import com.irummate.domain.user.entity.UserRole;
 import com.irummate.global.security.AccessTokenAuthenticationService;
 import com.irummate.global.jwt.WebSocketPrincipal;
 import com.irummate.global.util.HashIdsUtils;
@@ -10,12 +12,14 @@ import com.irummate.global.websocket.WebSocketStompErrorHandler;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
+import org.springframework.messaging.MessageHandler;
 import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.messaging.simp.SimpMessageType;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
+import org.springframework.messaging.support.ExecutorChannelInterceptor;
 import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
@@ -34,18 +38,21 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private static final String CHAT_SEND_DESTINATION = "/app/chat/send";
 
     private final AccessTokenAuthenticationService authenticationService;
-    private final ChatRoomRepository chatRoomRepository;
+    private final ChatRoomAccessService chatRoomAccessService;
     private final HashIdsUtils hashIdsUtils;
     private final WebSocketStompErrorHandler stompErrorHandler;
+    private final ChatSocketSessions chatSockets;
 
     public WebSocketConfig(AccessTokenAuthenticationService authenticationService,
-                            ChatRoomRepository chatRoomRepository,
+                            ChatRoomAccessService chatRoomAccessService,
                             HashIdsUtils hashIdsUtils,
-                            WebSocketStompErrorHandler stompErrorHandler) {
+                            WebSocketStompErrorHandler stompErrorHandler,
+                            ChatSocketSessions chatSockets) {
         this.authenticationService = authenticationService;
-        this.chatRoomRepository = chatRoomRepository;
+        this.chatRoomAccessService = chatRoomAccessService;
         this.hashIdsUtils = hashIdsUtils;
         this.stompErrorHandler = stompErrorHandler;
+        this.chatSockets = chatSockets;
     }
 
     @Override
@@ -56,6 +63,8 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         registry.addEndpoint("/ws/chat")
                 // 프론트 로컬 개발 서버와 백엔드 정적 테스트 페이지에서만 웹소켓 연결을 허용한다.
                 .setAllowedOriginPatterns(
+                        "https://localhost",     // Android
+                        "capacitor://localhost", // iOS
                         "http://localhost.com:5173",
                         "https://www.irummate.com",
                         "https://irummate.com"
@@ -78,6 +87,16 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         registration.interceptors(createInboundInterceptor());
     }
 
+    @Override
+    public void configureClientOutboundChannel(ChannelRegistration registration) {
+        registration.interceptors(new ExecutorChannelInterceptor() {
+            @Override
+            public Message<?> beforeHandle(Message<?> message, MessageChannel channel, MessageHandler handler) {
+                return chatSockets.allowsOutbound(message) ? message : null;
+            }
+        });
+    }
+
     ChannelInterceptor createInboundInterceptor() {
         return new ChannelInterceptor() {
             @Override
@@ -97,6 +116,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
                     try {
                         var access = authenticationService.authenticate(token);
+                        requireUserRole(access.role());
                         accessor.setUser(new WebSocketPrincipal(access.userId(), access.sessionId(), access.expiresAt()));
                     } catch (BusinessException e) {
                         throw new BusinessException(ErrorCode.WEBSOCKET_UNAUTHORIZED);
@@ -128,7 +148,8 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
             throw new BusinessException(ErrorCode.WEBSOCKET_UNAUTHORIZED);
         }
         try {
-            authenticationService.validateSession(user.getUserId(), user.getSessionId(), user.getExpiresAt());
+            var access = authenticationService.validateSession(user.getUserId(), user.getSessionId(), user.getExpiresAt());
+            requireUserRole(access.role());
         } catch (BusinessException e) {
             throw new BusinessException(ErrorCode.WEBSOCKET_UNAUTHORIZED);
         }
@@ -142,20 +163,16 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
             throw new BusinessException(ErrorCode.INVALID_WEBSOCKET_DESTINATION);
         }
 
-        if (CHAT_ERROR_DESTINATION.equals(destination)) {
+        if (CHAT_ERROR_DESTINATION.equals(destination)
+                || ("/user" + ChatSocketSessions.EVENTS_QUEUE).equals(destination)
+                || ("/user" + ChatSocketSessions.NOTIFICATIONS_QUEUE).equals(destination)) {
             return;
         }
 
         if (destination.startsWith(ROOM_TOPIC_PREFIX)) {
             Long roomId = parseDestinationId(destination, ROOM_TOPIC_PREFIX);
 
-            if (!chatRoomRepository.existsById(roomId)) {
-                throw new BusinessException(ErrorCode.CHAT_ROOM_NOT_FOUND);
-            }
-
-            if (!chatRoomRepository.existsByRoomIdAndParticipantId(roomId, userId)) {
-                throw new BusinessException(ErrorCode.NOT_CHAT_PARTICIPANT);
-            }
+            chatRoomAccessService.requireMatchRoomTopic(roomId, userId);
 
             return;
         }
@@ -179,6 +196,12 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         }
 
         throw new BusinessException(ErrorCode.WEBSOCKET_UNAUTHORIZED);
+    }
+
+    private void requireUserRole(UserRole role) {
+        if (role != UserRole.USER) {
+            throw new BusinessException(ErrorCode.WEBSOCKET_UNAUTHORIZED);
+        }
     }
 
     private Long parseDestinationId(String destination, String prefix) {

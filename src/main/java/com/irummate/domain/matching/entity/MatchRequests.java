@@ -27,41 +27,52 @@ public class MatchRequests {
     @Column(name = "match_request_id")
     private Long id;
 
+    // Id가 더 작은 user
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_low_id")
     private Users userLow;
 
+    // Id가 더 큰 user
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_high_id")
     private Users userHigh;
 
+    // userLow의 설문 내역
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_low_preferences_id")
     private UserPreferences userLowPreferences;
 
+    // userHigh의 설문 내역
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_high_preferences_id")
     private UserPreferences userHighPreferences;
 
+    // 둘 사이의 매칭 점수
     @Column
     private Double matchPercentage;
 
+    // userLow의 매칭 상태
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, name = "user_low_status")
     private MatchStatus userLowStatus;
 
+    // userHigh의 매칭 상태
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, name = "user_high_status")
     private MatchStatus userHighStatus;
 
+    // matchRequest가 생성된 시간
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    // userLow가 추천받은 시간
     @Column(name = "user_low_recommended_at")
     private LocalDateTime userLowRecommendedAt;
 
+    // userHigh가 추천받은 시간
     @Column(name = "user_high_recommended_at")
     private LocalDateTime userHighRecommendedAt;
+
 
     @PrePersist
     protected void onCreate() {

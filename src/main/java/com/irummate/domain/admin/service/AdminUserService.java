@@ -8,6 +8,7 @@ import com.irummate.domain.admin.entity.UserBan;
 import com.irummate.domain.admin.repository.UserBanRepository;
 import com.irummate.domain.auth.repository.LoginSessionRepository;
 import com.irummate.domain.certification.entity.Certification;
+import com.irummate.domain.certification.entity.CertificationStatus;
 import com.irummate.domain.certification.repository.CertificationRepository;
 import com.irummate.domain.matching.service.MatchingService;
 import com.irummate.domain.user.entity.Users;
@@ -16,6 +17,7 @@ import com.irummate.domain.user.repository.UsersRepository;
 import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
 import com.irummate.global.util.HashIdsUtils;
+import com.irummate.global.util.SemesterUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -70,11 +72,12 @@ public class AdminUserService {
     public AdminUserDetailResponseDto getUser(String userId) {
         Long decodedUserId = decodeUserId(userId);
         Users user = getUser(decodedUserId);
-        Certification latestCertification = certificationRepository
-                .findTopByUser_IdOrderByCreatedAtDesc(decodedUserId)
+        // 관리자 사용자 상세에도 현재 학기의 인증 상태만 반영
+        Certification currentCertification = certificationRepository
+                .findByUser_IdAndSemester(decodedUserId, SemesterUtils.currentSemester())
                 .orElse(null);
 
-        return AdminUserDetailResponseDto.from(user, userId, latestCertification);
+        return AdminUserDetailResponseDto.from(user, userId, currentCertificationStatus(currentCertification));
     }
 
     @Transactional
@@ -111,6 +114,19 @@ public class AdminUserService {
                 .ifPresent(ban -> ban.lift(admin));
 
         return AdminUserResponseDto.from(user, userId);
+    }
+
+    // 조회 시 DB 상태를 변경하지 않고 인증 만료 여부를 반영
+    private String currentCertificationStatus(Certification certification) {
+        if (certification == null) {
+            return "NONE";
+        }
+        if (certification.getCertificationStatus() == CertificationStatus.APPROVED
+                && certification.getExpiresAt() != null
+                && !certification.getExpiresAt().isAfter(LocalDateTime.now(ZoneId.of("Asia/Seoul")))) {
+            return CertificationStatus.EXPIRED.name();
+        }
+        return certification.getCertificationStatus().name();
     }
 
     private Users getUser(Long userId) {

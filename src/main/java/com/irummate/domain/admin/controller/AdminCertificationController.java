@@ -1,6 +1,7 @@
 package com.irummate.domain.admin.controller;
 
 import com.irummate.domain.admin.dto.AdminCertificationRejectRequestDto;
+import com.irummate.domain.admin.dto.AdminCertificationApproveRequestDto;
 import com.irummate.domain.admin.dto.AdminCertificationResponseDto;
 import com.irummate.domain.admin.service.AdminCertificationService;
 import com.irummate.domain.certification.entity.CertificationStatus;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequiredArgsConstructor
@@ -45,7 +47,7 @@ public class AdminCertificationController {
     @GetMapping("/{certificationId}")
     @RequiresAuth(roles = AuthRole.ADMIN)
     public ResponseEntity<GlobalApiResponse<AdminCertificationResponseDto>> getCertification(
-            @PathVariable String certificationId
+            @PathVariable UUID certificationId
     ) {
         AdminCertificationResponseDto responseDto = adminCertificationService.getCertification(certificationId);
 
@@ -58,9 +60,10 @@ public class AdminCertificationController {
     @RequiresAuth(roles = AuthRole.ADMIN)
     public ResponseEntity<GlobalApiResponse<AdminCertificationResponseDto>> approveCertification(
             @AuthenticationPrincipal Long adminUserId,
-            @PathVariable String certificationId
+            @PathVariable UUID certificationId,
+            @Valid @RequestBody AdminCertificationApproveRequestDto requestDto
     ) {
-        AdminCertificationResponseDto responseDto = adminCertificationService.approveCertification(adminUserId, certificationId);
+        AdminCertificationResponseDto responseDto = adminCertificationService.approveCertification(adminUserId, certificationId, requestDto);
 
         return ResponseEntity.ok(
                 GlobalApiResponse.success(HttpStatus.OK, "인증 요청 승인 성공", responseDto)
@@ -71,7 +74,7 @@ public class AdminCertificationController {
     @RequiresAuth(roles = AuthRole.ADMIN)
     public ResponseEntity<GlobalApiResponse<AdminCertificationResponseDto>> rejectCertification(
             @AuthenticationPrincipal Long adminUserId,
-            @PathVariable String certificationId,
+            @PathVariable UUID certificationId,
             @Valid @RequestBody AdminCertificationRejectRequestDto requestDto
     ) {
         AdminCertificationResponseDto responseDto = adminCertificationService.rejectCertification(adminUserId, certificationId, requestDto);

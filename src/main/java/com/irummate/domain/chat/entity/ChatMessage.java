@@ -10,7 +10,10 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 
 @Entity
-@Table(name = "chat_messages")
+@Table(
+        name = "chat_messages",
+        indexes = @Index(name = "idx_chat_messages_room_id_id", columnList = "room_id, id")
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ChatMessage {
@@ -19,19 +22,24 @@ public class ChatMessage {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "room_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "room_id",
+            nullable = false,
+            foreignKey = @ForeignKey(name = "fk_chat_messages_room")
+    )
     private ChatRoom room;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "sender_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "sender_id",
+            nullable = false,
+            foreignKey = @ForeignKey(name = "fk_chat_messages_sender")
+    )
     private Users sender;
 
-    @Column(nullable = false, length = 500)
+    @Column(name = "message", nullable = false, length = 500)
     private String message;
-
-    @Column(name = "is_read", nullable = false)
-    private Boolean isRead = false;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -40,7 +48,6 @@ public class ChatMessage {
         this.room = room;
         this.sender = sender;
         this.message = message;
-        this.isRead = false;
     }
 
     public static ChatMessage create(ChatRoom room, Users sender, String message) {
@@ -48,9 +55,7 @@ public class ChatMessage {
     }
 
     @PrePersist
-    protected void onCreate()
-    {
+    protected void onCreate() {
         this.createdAt = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
     }
-
 }

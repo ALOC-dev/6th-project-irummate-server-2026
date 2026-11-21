@@ -1,9 +1,10 @@
 package com.irummate;
 
+import com.irummate.domain.chat.service.ChatService;
 import com.irummate.domain.chatbot.init.DormitoryFaqSeeder;
-import com.openai.client.OpenAIClient;
 import com.irummate.global.jwt.JwtTokenProvider;
 import com.irummate.global.util.HashIdsUtils;
+import com.openai.client.OpenAIClient;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,6 +54,7 @@ abstract class SecurityIntegrationSupport {
     @MockitoBean DormitoryFaqSeeder dormitoryFaqSeeder;
     @MockitoBean OpenAIClient openAIClient;
     @Autowired JdbcTemplate jdbc;
+    @Autowired ChatService chatService;
     @Autowired JwtTokenProvider tokens;
     @Autowired HashIdsUtils hashIds;
     @Autowired JsonMapper json;
@@ -82,10 +84,7 @@ abstract class SecurityIntegrationSupport {
                                            match_percentage, created_at)
                 VALUES (?, ?, 'HEART', 'HEART', 90, now()) RETURNING match_request_id
                 """, Long.class, ALICE, BOB);
-        roomId = jdbc.queryForObject("""
-                INSERT INTO chat_rooms(match_request_id, status, created_at)
-                VALUES (?, 'OPEN', now()) RETURNING id
-                """, Long.class, matchId);
+        roomId = chatService.createChatRoomIfNotExists(matchId).getId();
     }
 
     private UUID session(long userId, String refreshToken) throws Exception {

@@ -1,7 +1,6 @@
 package com.irummate.domain.survey.service;
 
-import com.irummate.domain.matching.entity.MatchingConfig;
-import com.irummate.domain.matching.repository.MatchingConfigRepository;
+import com.irummate.domain.matching.service.MatchingPeriodProvider;
 import com.irummate.domain.survey.dto.SurveyAnswers;
 import com.irummate.domain.survey.dto.UserPreferencesRequestDto;
 import com.irummate.domain.survey.dto.UserPreferencesResponseDto;
@@ -12,28 +11,22 @@ import com.irummate.domain.user.entity.Users;
 import com.irummate.domain.user.repository.UsersRepository;
 import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDate;
-import java.time.ZoneId;
 
 @Service
+@RequiredArgsConstructor
 public class SurveyService {
 
-    final private UsersRepository usersRepository;
-    final private UserPreferencesRepository userPreferencesRepository;
-    final private MatchingConfigRepository matchingConfigRepository;
+    private final UsersRepository usersRepository;
+    private final UserPreferencesRepository userPreferencesRepository;
+    private final MatchingPeriodProvider matchingPeriodProvider;
+    private final Clock clock;
 
-    @Autowired
-    public SurveyService(UserPreferencesRepository userPreferencesRepository,
-                         UsersRepository usersRepository,
-                         MatchingConfigRepository matchingConfigRepository){
-        this.userPreferencesRepository = userPreferencesRepository;
-        this.usersRepository = usersRepository;
-        this.matchingConfigRepository = matchingConfigRepository;
-    }
 
     @Transactional(readOnly = true)
     public UserPreferencesResponseDto getSurveyStatus(Long userId){
@@ -97,12 +90,7 @@ public class SurveyService {
             throw new BusinessException(ErrorCode.ALREADY_CONFIRMED);
         }
 
-        MatchingConfig matchingConfig = matchingConfigRepository.findById(MatchingConfig.SINGLETON_ID)
-                .orElseThrow(()->new BusinessException(ErrorCode.MATCH_DATE_NOT_FOUND));
-
-        LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
-
-        if (!today.isBefore(matchingConfig.getMatchStartDate())) {
+        if (!matchingPeriodProvider.getRequired().isSurveyEditable(LocalDate.now(clock))) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "매칭 시작일 전까지만 설문을 수정할 수 있습니다.");
         }
     }

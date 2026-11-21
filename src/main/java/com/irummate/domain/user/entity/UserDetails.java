@@ -9,34 +9,41 @@ import lombok.NoArgsConstructor;
 @Entity
 @Table(name = "user_details")
 @Getter
-@NoArgsConstructor(access = AccessLevel.PRIVATE)
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class UserDetails {
 
+    // Users 테이블과 공유하는 사용자 식별자
     @Id
     @Column(name = "user_id")
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long userId;
 
-    @OneToOne(fetch = FetchType.LAZY)
+    // 추가 정보의 소유 사용자
+    @OneToOne(fetch = FetchType.LAZY, optional = false)
     @MapsId
-    @JoinColumn(name = "user_id")
+    @JoinColumn(name = "user_id", nullable = false)
     private Users user;
 
+    // 실명
     @Column(name = "real_name", nullable = false)
     private String realName;
 
+    // 학번
     @Column(name = "student_id", nullable = false)
-    private String studentId;   // 학번
+    private String studentId;
 
+    // 나이
     @Column(nullable = false)
     private int age;
 
+    // 성별
     @Column(nullable = false)
     private String gender;
 
+    // 학과
     @Column(nullable = false)
     private String department;
 
+    // 전화번호
     @Column(name = "phone_number", nullable = false)
     private String phoneNumber;
 

@@ -14,12 +14,16 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.ColumnDefault;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.UUID;
 
 @Entity
 @Getter
@@ -30,9 +34,22 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Certification {
 
+    private static final ZoneId SERVICE_ZONE = ZoneId.of("Asia/Seoul");
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    // 외부 공개용 식별자. 최초 저장 시 발급하고 변경하지 않음
+    @Column(name = "public_id", nullable = false, unique = true, updatable = false)
+    @ColumnDefault("gen_random_uuid()")
+    private UUID publicId;
+
+    // 수정 시 버전을 증가시켜 동시 변경을 감지
+    @Version
+    @Column(nullable = false)
+    @ColumnDefault("0")
+    private Long version;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
@@ -77,14 +94,17 @@ public class Certification {
 
     @PrePersist
     protected void onCreate() {
-        this.createdAt = LocalDateTime.now();
+        if (this.publicId == null) {
+            this.publicId = UUID.randomUUID();
+        }
+        this.createdAt = LocalDateTime.now(SERVICE_ZONE);
     }
 
     public void approve(Users admin, String adminComment, LocalDateTime expiresAt) {
         this.certificationStatus = CertificationStatus.APPROVED;
         this.adminComment = adminComment;
         this.reviewedBy = admin;
-        this.reviewedAt = LocalDateTime.now();
+        this.reviewedAt = LocalDateTime.now(SERVICE_ZONE);
         this.expiresAt = expiresAt;
     }
 
@@ -92,7 +112,7 @@ public class Certification {
         this.certificationStatus = CertificationStatus.REJECTED;
         this.adminComment = adminComment;
         this.reviewedBy = admin;
-        this.reviewedAt = LocalDateTime.now();
+        this.reviewedAt = LocalDateTime.now(SERVICE_ZONE);
         this.expiresAt = null;
     }
 

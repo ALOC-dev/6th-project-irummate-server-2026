@@ -47,8 +47,8 @@ dependencies {
 	implementation 'com.openai:openai-java:4.101.0'
 
 	// DB 스키마 변경 이력
-//	implementation 'org.springframework.boot:spring-boot-starter-flyway'
-//	runtimeOnly 'org.flywaydb:flyway-database-postgresql'
+	// implementation 'org.springframework.boot:spring-boot-starter-flyway'
+	// runtimeOnly 'org.flywaydb:flyway-database-postgresql'
 
 	// S3 / API 문서
 	implementation platform("software.amazon.awssdk:bom:${awsSdkVersion}")
@@ -60,6 +60,9 @@ dependencies {
 	annotationProcessor 'org.projectlombok:lombok'
 	developmentOnly 'org.springframework.boot:spring-boot-devtools'
 
+	// 공통 검증·차단 AOP
+	implementation 'org.springframework.boot:spring-boot-starter-aspectj'
+
 	// 공통 테스트 라이브러리를 포함하는 기술별 스타터
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
@@ -70,6 +73,14 @@ dependencies {
 	testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
 	testImplementation 'org.testcontainers:testcontainers-postgresql'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+
+	// Firebase Cloud Messaging
+	implementation 'com.google.firebase:firebase-admin:9.12.0'
+
+	// 캐시 작업용
+	implementation 'org.springframework.boot:spring-boot-starter-cache'
+	implementation 'com.github.ben-manes.caffeine:caffeine'
 }
 
 tasks.named('test') {

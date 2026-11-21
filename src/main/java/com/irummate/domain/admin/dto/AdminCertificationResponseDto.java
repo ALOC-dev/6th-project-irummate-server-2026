@@ -1,17 +1,18 @@
 package com.irummate.domain.admin.dto;
 
 import com.irummate.domain.certification.entity.Certification;
-import com.irummate.global.util.HashIdsUtils;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
 public class AdminCertificationResponseDto {
 
-    private String certificationId;
+    private UUID certificationId;
+    private Long version;
     private String userId;
     private String userRealName;
     private String userNickname;
@@ -24,13 +25,14 @@ public class AdminCertificationResponseDto {
     private LocalDateTime expiresAt;
 
     public static AdminCertificationResponseDto from(Certification certification,
-                                                     String certificationId,
+                                                     UUID certificationId,
                                                      String userId,
                                                      String imageURL) {
 
 
         return new AdminCertificationResponseDto(
                 certificationId,
+                certification.getVersion(),
                 userId,
                 certification.getUser().getUserDetails() == null ? null : certification.getUser().getUserDetails().getRealName(),
                 certification.getUser().getNickname(),
