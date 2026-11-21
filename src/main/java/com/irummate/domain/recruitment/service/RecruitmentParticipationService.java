@@ -19,7 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.Clock;
 import java.util.List;
 import java.util.Set;
 import java.util.HashSet;
@@ -35,6 +35,7 @@ public class RecruitmentParticipationService {
     private final UsersRepository usersRepository;
     private final HashIdsUtils hashIdsUtils;
     private final RecruitmentBookmarksRepository recruitmentBookmarksRepository;
+    private final Clock clock;
     private final RecruitmentChatRoomService recruitmentChatRooms;
 
     @PersistenceContext
@@ -64,7 +65,7 @@ public class RecruitmentParticipationService {
                 .orElseThrow(()->new BusinessException(ErrorCode.RECRUITMENT_NOT_FOUND));
 
         // 잠금 대기 중 마감될 수 있으므로 잠금 획득 후 현재 시간 확인
-        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+        LocalDateTime now = LocalDateTime.now(clock);
 
         // 숨김 여부를 다른 참여 조건보다 먼저 확인
         if(!recruitment.isVisible()){
@@ -149,7 +150,7 @@ public class RecruitmentParticipationService {
         }
 
         // 참여 상태 변경
-        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+        LocalDateTime now = LocalDateTime.now(clock);
         if ((recruitment.getStatus() != RecruitmentStatus.OPEN
                 && recruitment.getStatus() != RecruitmentStatus.CLOSED)
                 || !recruitment.getActivityAt().isAfter(now)) {
@@ -186,6 +187,9 @@ public class RecruitmentParticipationService {
                 recruitmentBookmarksRepository.findBookmarkedRecruitmentIds(userId,
                         participations.stream().map(participant -> participant.getRecruitment().getId()).toList()));
 
+        // 목록 전체에 같은 기준 시각으로 참여 가능 여부를 판단
+        LocalDateTime now = LocalDateTime.now(clock);
+
         List<RecruitmentResponseDto> myParticipants = participations.stream()
                 .map(participant ->{
                     Recruitments recruitment = participant.getRecruitment();
@@ -206,7 +210,7 @@ public class RecruitmentParticipationService {
                                 .build();
                     }
 
-                    return RecruitmentResponseDto.from(recruitment, participating, bookmarkedIds.contains(recruitment.getId()));
+                    return RecruitmentResponseDto.from(recruitment, participating, bookmarkedIds.contains(recruitment.getId()), now);
                 })
                 .toList();
 
@@ -244,7 +248,7 @@ public class RecruitmentParticipationService {
         }
 
         // 권한 확인 후 게시글 상태 검증
-        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+        LocalDateTime now = LocalDateTime.now(clock);
         if ((recruitment.getStatus() != RecruitmentStatus.OPEN
                 && recruitment.getStatus() != RecruitmentStatus.CLOSED)
                 || !recruitment.getActivityAt().isAfter(now)) {
@@ -281,6 +285,7 @@ public class RecruitmentParticipationService {
         );
     }
 
+    @Transactional(readOnly = true)
     public RecruitmentParticipantsResponseDto getRecruitmentParticipants(
             Long userId,
             Long recruitmentId

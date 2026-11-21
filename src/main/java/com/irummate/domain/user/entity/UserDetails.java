@@ -35,8 +35,8 @@ public class UserDetails {
     @Column(nullable = false)
     private int age;
 
-    // 성별
-    @Column(nullable = false)
+    // 성별 (최초 등록 후 수정 불가)
+    @Column(nullable = false, updatable = false)
     private String gender;
 
     // 학과
@@ -58,7 +58,7 @@ public class UserDetails {
         this.phoneNumber = phoneNumber;
     }
 
-    public void update(String realName, String studentId, Integer age, String gender, String department, String phoneNumber) {
+    public void update(String realName, String studentId, Integer age, String department, String phoneNumber) {
         if (realName != null) {
             this.realName = realName;
         }
@@ -67,9 +67,6 @@ public class UserDetails {
         }
         if (age != null) {
             this.age = age;
-        }
-        if (gender != null) {
-            this.gender = gender;
         }
         if (department != null) {
             this.department = department;

@@ -13,6 +13,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import java.time.ZoneId;
+import java.time.Clock;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -22,7 +24,7 @@ class RecruitmentPaginationTest {
     private final RecruitmentParticipantsRepository participants = mock(RecruitmentParticipantsRepository.class);
     private final UsersRepository users = mock(UsersRepository.class);
     private final RecruitmentParticipationService participationService =
-            new RecruitmentParticipationService(recruitments, participants, users, mock(HashIdsUtils.class), mock(RecruitmentBookmarksRepository.class), mock(RecruitmentChatRoomService.class));
+            new RecruitmentParticipationService(recruitments, participants, users, mock(HashIdsUtils.class), mock(RecruitmentBookmarksRepository.class), Clock.system(ZoneId.of("Asia/Seoul")), mock(RecruitmentChatRoomService.class));
 
     @ParameterizedTest
     @CsvSource({"-1,10", "0,0", "0,-1", "0,51", "0,100000"})

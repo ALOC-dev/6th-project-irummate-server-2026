@@ -5,8 +5,6 @@ import com.irummate.domain.admin.dto.AdminCertificationApproveRequestDto;
 import com.irummate.domain.admin.dto.AdminCertificationResponseDto;
 import com.irummate.domain.admin.service.AdminCertificationService;
 import com.irummate.domain.certification.entity.CertificationStatus;
-import com.irummate.global.aop.AuthRole;
-import com.irummate.global.aop.RequiresAuth;
 import com.irummate.global.response.GlobalApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +30,6 @@ public class AdminCertificationController {
     private final AdminCertificationService adminCertificationService;
 
     @GetMapping
-    @RequiresAuth(roles = AuthRole.ADMIN)
     public ResponseEntity<GlobalApiResponse<List<AdminCertificationResponseDto>>> getCertifications(
             @RequestParam(required = false) CertificationStatus status,
             @RequestParam(defaultValue = "0") int page
@@ -45,7 +42,6 @@ public class AdminCertificationController {
     }
 
     @GetMapping("/{certificationId}")
-    @RequiresAuth(roles = AuthRole.ADMIN)
     public ResponseEntity<GlobalApiResponse<AdminCertificationResponseDto>> getCertification(
             @PathVariable UUID certificationId
     ) {
@@ -57,7 +53,6 @@ public class AdminCertificationController {
     }
 
     @PatchMapping("/{certificationId}/approve")
-    @RequiresAuth(roles = AuthRole.ADMIN)
     public ResponseEntity<GlobalApiResponse<AdminCertificationResponseDto>> approveCertification(
             @AuthenticationPrincipal Long adminUserId,
             @PathVariable UUID certificationId,
@@ -71,7 +66,6 @@ public class AdminCertificationController {
     }
 
     @PatchMapping("/{certificationId}/reject")
-    @RequiresAuth(roles = AuthRole.ADMIN)
     public ResponseEntity<GlobalApiResponse<AdminCertificationResponseDto>> rejectCertification(
             @AuthenticationPrincipal Long adminUserId,
             @PathVariable UUID certificationId,

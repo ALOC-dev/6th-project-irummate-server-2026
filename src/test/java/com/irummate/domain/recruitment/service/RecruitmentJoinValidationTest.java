@@ -21,6 +21,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Optional;
@@ -34,7 +35,7 @@ class RecruitmentJoinValidationTest {
     private final UsersRepository users = mock(UsersRepository.class);
     private final EntityManager entityManager = mock(EntityManager.class);
     private final RecruitmentParticipationService service =
-            new RecruitmentParticipationService(recruitments, participants, users, mock(HashIdsUtils.class), mock(RecruitmentBookmarksRepository.class), mock(RecruitmentChatRoomService.class));
+            new RecruitmentParticipationService(recruitments, participants, users, mock(HashIdsUtils.class), mock(RecruitmentBookmarksRepository.class), Clock.system(ZoneId.of("Asia/Seoul")), mock(RecruitmentChatRoomService.class));
     private final LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
     private final Users viewer = user(2L);
 

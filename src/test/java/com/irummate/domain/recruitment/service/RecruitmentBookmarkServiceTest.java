@@ -15,6 +15,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
@@ -27,7 +28,7 @@ class RecruitmentBookmarkServiceTest {
     private final RecruitmentBookmarksRepository bookmarks = mock(RecruitmentBookmarksRepository.class);
     private final RecruitmentsRepository recruitments = mock(RecruitmentsRepository.class);
     private final UsersRepository users = mock(UsersRepository.class);
-    private final RecruitmentBookmarkService service = new RecruitmentBookmarkService(bookmarks, recruitments, users);
+    private final RecruitmentBookmarkService service = new RecruitmentBookmarkService(bookmarks, recruitments, users, Clock.system(ZoneId.of("Asia/Seoul")));
     private final LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul")).withNano(123456000);
 
     @Test

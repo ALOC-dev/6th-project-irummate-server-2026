@@ -1,6 +1,7 @@
 package com.irummate.global.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.irummate.global.exception.ErrorCode;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -41,10 +42,10 @@ public class GlobalApiResponse<T> {
                 .build();
     }
 
-    public static GlobalApiResponse<Void> error(HttpStatus status, String message, List<ErrorResponse> errors){
+    public static GlobalApiResponse<Void> error(ErrorCode errorCode, String message, List<ErrorResponse> errors) {
         return GlobalApiResponse.<Void>builder()
-                .status(status.value())
-                .code(status.name())
+                .status(errorCode.getHttpStatus().value())
+                .code(errorCode.name())
                 .message(message)
                 .errors((errors != null) ? errors : List.of())
                 .build();

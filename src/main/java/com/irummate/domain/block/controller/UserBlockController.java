@@ -3,7 +3,6 @@ package com.irummate.domain.block.controller;
 import com.irummate.domain.block.dto.BlockStatusResponseDto;
 import com.irummate.domain.block.dto.UserBlocksResponseDto;
 import com.irummate.domain.block.service.UserBlockService;
-import com.irummate.global.aop.RequiresAuth;
 import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
 import com.irummate.global.response.GlobalApiResponse;
@@ -22,7 +21,6 @@ public class UserBlockController {
     private final UserBlockService userBlockService;
     private final HashIdsUtils hashIdsUtils;
 
-    @RequiresAuth
     // 유저 차단
     @PostMapping("/{userId}/block")
     public ResponseEntity<GlobalApiResponse<Void>> block(@AuthenticationPrincipal Long currentUserId,
@@ -32,7 +30,6 @@ public class UserBlockController {
         return ResponseEntity.ok(GlobalApiResponse.success(HttpStatus.OK, "사용자를 차단했습니다.", null));
     }
 
-    @RequiresAuth
     // 차단 해제
     @DeleteMapping("/{userId}/block")
     public ResponseEntity<GlobalApiResponse<Void>> unblock(@AuthenticationPrincipal Long currentUserId,
@@ -41,7 +38,6 @@ public class UserBlockController {
         return ResponseEntity.ok(GlobalApiResponse.success(HttpStatus.OK, "사용자 차단을 해제했습니다.", null));
     }
 
-    @RequiresAuth
     // 내 차단 유저 목록 불러오기
     @GetMapping("/blocks")
     public ResponseEntity<GlobalApiResponse<UserBlocksResponseDto>> findMyBlocks(
@@ -52,7 +48,6 @@ public class UserBlockController {
         return ResponseEntity.ok(GlobalApiResponse.success(HttpStatus.OK, "차단 목록 조회 성공", result));
     }
 
-    @RequiresAuth
     // 차단/해제 버튼 표시를 결정할 때 사용
     @GetMapping("/{userId}/block-status")
     public ResponseEntity<GlobalApiResponse<BlockStatusResponseDto>> getBlockStatus(

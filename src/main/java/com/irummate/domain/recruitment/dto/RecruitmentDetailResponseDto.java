@@ -5,7 +5,6 @@ import lombok.Builder;
 import lombok.Getter;
 
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 
 @Getter
 @Builder
@@ -62,9 +61,10 @@ public class RecruitmentDetailResponseDto {
             Recruitments recruitment,
             RecruitmentParticipationView participating,
             String removalReason,
-            boolean bookmarked
+            boolean bookmarked,
+            LocalDateTime now
     ) {
-        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+        // now: 참여 가능 여부 판단 기준 시각(서비스에서 주입된 Clock으로 계산해 전달)
         boolean joinable = participating.isJoinable(recruitment, now);
         boolean full =
                 recruitment.getNowParticipants()

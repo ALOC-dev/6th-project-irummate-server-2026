@@ -11,7 +11,6 @@ import lombok.Builder;
 import lombok.Getter;
 
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 
 @Getter
 @Builder
@@ -58,22 +57,24 @@ public class RecruitmentResponseDto {
     public static RecruitmentResponseDto from(
             Recruitments recruitment,
             RecruitmentParticipationView participating,
-            boolean bookmarked
+            boolean bookmarked,
+            LocalDateTime now
     ) {
         return from(recruitment, participating, recruitment.getAuthor().getId(),
-                recruitment.getAuthor().getNickname(), recruitment.getAuthor().getProfileImageUrl(), bookmarked);
+                recruitment.getAuthor().getNickname(), recruitment.getAuthor().getProfileImageUrl(), bookmarked, now);
     }
 
     // 작성자 필드를 함께 조회한 경우 Users 추가 조회 없이 응답 생성
+    // now: 참여 가능 여부 판단 기준 시각(서비스에서 주입된 Clock으로 계산해 전달)
     public static RecruitmentResponseDto from(
             Recruitments recruitment,
             RecruitmentParticipationView participating,
             Long authorId,
             String authorNickname,
             String authorProfileImageUrl,
-            boolean bookmarked
+            boolean bookmarked,
+            LocalDateTime now
     ) {
-        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
         boolean joinable = participating.isJoinable(recruitment, now);
         boolean full = recruitment.getNowParticipants()
                 >= recruitment.getMaxParticipants();

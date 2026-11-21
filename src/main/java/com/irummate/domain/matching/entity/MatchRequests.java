@@ -4,17 +4,27 @@ import com.irummate.domain.survey.entity.UserPreferences;
 import com.irummate.domain.user.entity.Users;
 import jakarta.persistence.*;
 import lombok.*;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 
 @Entity
+@EntityListeners(AuditingEntityListener.class)
 @Getter
 @Table(name = "match_requests",
         uniqueConstraints = {
                 @UniqueConstraint(
                         name = "uk_match_requests_user_pair",
                         columnNames = {"user_low_id", "user_high_id"}
+                )
+        },
+        // user_low_id 조건은 유니크 인덱스(user_low_id, user_high_id)가 처리하고,
+        // user_high_id 조건은 이 인덱스가 처리해 "user_low_id = ? OR user_high_id = ?" 조회가 인덱스를 사용
+        indexes = {
+                @Index(
+                        name = "idx_match_requests_high_low",
+                        columnList = "user_high_id, user_low_id"
                 )
         })
 @Builder
@@ -61,7 +71,8 @@ public class MatchRequests {
     @Column(nullable = false, name = "user_high_status")
     private MatchStatus userHighStatus;
 
-    // matchRequest가 생성된 시간
+    // matchRequest가 생성된 시간(Clock 기준 자동 기록, JpaAuditingConfig)
+    @CreatedDate
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -72,12 +83,6 @@ public class MatchRequests {
     // userHigh가 추천받은 시간
     @Column(name = "user_high_recommended_at")
     private LocalDateTime userHighRecommendedAt;
-
-
-    @PrePersist
-    protected void onCreate() {
-        this.createdAt = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
-    }
 
 
     public MatchStatus getStatusOf(Long userId) {
@@ -92,20 +97,36 @@ public class MatchRequests {
 
     // 특정 사용자의 matchStatus를 업데이트
     // userlow, userhigh는 함수가 구분
+    // RECOMMENDED는 추천 시각이 필요하므로 recommend(userId, now)를 사용
     public void updateStatusOf(Long userId, MatchStatus status) {
+        if (status == MatchStatus.RECOMMENDED) {
+            throw new IllegalArgumentException("RECOMMENDED status must be set via recommend(userId, now).");
+        }
+
         if (userLow.getId().equals(userId)) {
             this.userLowStatus = status;
-            if (status == MatchStatus.RECOMMENDED) {
-                this.userLowRecommendedAt = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
-            }
             return;
         }
 
         if (userHigh.getId().equals(userId)) {
             this.userHighStatus = status;
-            if (status == MatchStatus.RECOMMENDED) {
-                this.userHighRecommendedAt = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
-            }
+            return;
+        }
+
+        throw new IllegalArgumentException("User is not part of this match request.");
+    }
+
+    // 특정 사용자에게 RECOMMENDED 상태와 추천 시각을 기록
+    public void recommend(Long userId, LocalDateTime now) {
+        if (userLow.getId().equals(userId)) {
+            this.userLowStatus = MatchStatus.RECOMMENDED;
+            this.userLowRecommendedAt = now;
+            return;
+        }
+
+        if (userHigh.getId().equals(userId)) {
+            this.userHighStatus = MatchStatus.RECOMMENDED;
+            this.userHighRecommendedAt = now;
             return;
         }
 

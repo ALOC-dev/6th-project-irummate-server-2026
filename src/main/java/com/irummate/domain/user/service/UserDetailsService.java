@@ -123,7 +123,6 @@ public class UserDetailsService {
                 request.getRealName(),
                 request.getStudentId(),
                 request.getAge(),
-                request.getGender(),
                 request.getDepartment(),
                 request.getPhoneNumber()
         );

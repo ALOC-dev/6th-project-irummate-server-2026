@@ -22,6 +22,10 @@ public interface MatchRepository extends JpaRepository<MatchRequests, Long> {
 
     // 후보자를 추천하는 쿼리
     // MatchRequest의 상태를 recommended로 변경
+    // 다른 트랜잭션(확정, 하트/거절, 상대의 추천, 관리자 제재)이 이 행을 잠그고 있으면
+    // 기다리지 않고 건너뜀(SKIP LOCKED) → 0을 반환하므로 호출부는 다음 후보로 넘어감
+    // 잠긴 행을 기다리지 않으므로 match()가 데드락이나 잠금 타임아웃으로 전체 롤백되지 않음
+    // FOR NO KEY UPDATE: 일반 UPDATE와 같은 잠금 수준이며, FK 검사의 KEY SHARE 잠금과는 충돌하지 않음
     @Modifying
     @Query(value = """
     UPDATE match_requests mr
@@ -47,6 +51,12 @@ public interface MatchRepository extends JpaRepository<MatchRequests, Long> {
            ELSE mr.user_high_recommended_at
        END
     WHERE mr.match_request_id = :matchRequestId
+        AND mr.match_request_id IN (
+            SELECT locked.match_request_id
+            FROM match_requests locked
+            WHERE locked.match_request_id = :matchRequestId
+            FOR NO KEY UPDATE SKIP LOCKED
+        )
         AND (
             (
                 mr.user_low_id = :userId
@@ -61,6 +71,13 @@ public interface MatchRepository extends JpaRepository<MatchRequests, Long> {
                         AND u.role = 'USER'
                         AND up.is_completed = true
                         AND up.is_matched = false
+                        AND EXISTS (
+                            SELECT 1 FROM certifications c
+                            WHERE c.user_id = u.id
+                                AND c.semester = :semester
+                                AND c.certification_status = 'APPROVED'
+                                AND (c.expires_at IS NULL OR c.expires_at > :recommendedAt)
+                        )
                 )
         )
         OR
@@ -77,6 +94,13 @@ public interface MatchRepository extends JpaRepository<MatchRequests, Long> {
                     AND u.role = 'USER'
                     AND up.is_completed = true
                     AND up.is_matched = false
+                    AND EXISTS (
+                        SELECT 1 FROM certifications c
+                        WHERE c.user_id = u.id
+                            AND c.semester = :semester
+                            AND c.certification_status = 'APPROVED'
+                            AND (c.expires_at IS NULL OR c.expires_at > :recommendedAt)
+                    )
             )
         )
     )
@@ -84,6 +108,7 @@ public interface MatchRepository extends JpaRepository<MatchRequests, Long> {
     int recommendCandidateIfAvailable(
             @Param("matchRequestId") Long matchRequestId,
             @Param("userId") Long userId,
+            @Param("semester") String semester,
             @Param("recommendedAt") LocalDateTime recommendedAt
     );
 
@@ -128,6 +153,50 @@ public interface MatchRepository extends JpaRepository<MatchRequests, Long> {
     );
 
 
+    // 후보자 여러 명을 한 번의 INSERT로 저장하는 쿼리
+    // 같은 인덱스의 배열 원소끼리 한 행을 이룸(unnest로 펼쳐서 저장)
+    // 이미 존재하는 쌍은 ON CONFLICT로 건너뛰며, 실제로 저장된 행 수를 반환
+    @Modifying
+    @Query(value = """
+    INSERT INTO match_requests (
+        user_low_id,
+        user_high_id,
+        user_low_preferences_id,
+        user_high_preferences_id,
+        match_percentage,
+        user_low_status,
+        user_high_status,
+        created_at
+    )
+    SELECT
+        t.user_low_id,
+        t.user_high_id,
+        t.user_low_preferences_id,
+        t.user_high_preferences_id,
+        t.match_percentage,
+        'NONE',
+        'NONE',
+        :createdAt
+    FROM unnest(
+        CAST(:userLowIds AS bigint[]),
+        CAST(:userHighIds AS bigint[]),
+        CAST(:userLowPreferencesIds AS bigint[]),
+        CAST(:userHighPreferencesIds AS bigint[]),
+        CAST(:matchPercentages AS double precision[])
+    ) AS t(user_low_id, user_high_id, user_low_preferences_id, user_high_preferences_id, match_percentage)
+    ON CONFLICT (user_low_id, user_high_id)
+    DO NOTHING
+    """, nativeQuery = true)
+    int insertCandidatesIfAbsent(
+            @Param("userLowIds") Long[] userLowIds,
+            @Param("userHighIds") Long[] userHighIds,
+            @Param("userLowPreferencesIds") Long[] userLowPreferencesIds,
+            @Param("userHighPreferencesIds") Long[] userHighPreferencesIds,
+            @Param("matchPercentages") Double[] matchPercentages,
+            @Param("createdAt") LocalDateTime createdAt
+    );
+
+
     // match 알고리즘 실행 이전
     // 사용자에게 추천되지 않은 후보자들을 검색
     // 매칭 점수가 높은 순대로 검색
@@ -145,6 +214,13 @@ public interface MatchRepository extends JpaRepository<MatchRequests, Long> {
             AND mr.userHigh.role = UserRole.USER
             AND mr.userHighPreferences.isCompleted = true
             AND mr.userHighPreferences.isMatched = false
+            AND EXISTS (
+                SELECT c.id FROM Certification c
+                WHERE c.user.id = mr.userHigh.id
+                    AND c.semester = :semester
+                    AND c.certificationStatus = CertificationStatus.APPROVED
+                    AND (c.expiresAt IS NULL OR c.expiresAt > :now)
+            )
         )
         OR (
             mr.userHigh.id = :userId
@@ -157,11 +233,20 @@ public interface MatchRepository extends JpaRepository<MatchRequests, Long> {
             AND mr.userLow.role = UserRole.USER
             AND mr.userLowPreferences.isCompleted = true
             AND mr.userLowPreferences.isMatched = false
+            AND EXISTS (
+                SELECT c.id FROM Certification c
+                WHERE c.user.id = mr.userLow.id
+                    AND c.semester = :semester
+                    AND c.certificationStatus = CertificationStatus.APPROVED
+                    AND (c.expiresAt IS NULL OR c.expiresAt > :now)
+            )
         )
         ORDER BY mr.matchPercentage DESC
     """)
     List<MatchRequests> findAvailableCandidates(
-            Long userId,
+            @Param("userId") Long userId,
+            @Param("semester") String semester,
+            @Param("now") LocalDateTime now,
             Pageable pageable
     );
 
@@ -345,36 +430,43 @@ public interface MatchRepository extends JpaRepository<MatchRequests, Long> {
     );
 
 
-    // 최종 매칭 확정 시 해당 사용자의 다른 매칭들을 종료하는 쿼리
-    // 최종 확정된 MatchRequest는 제외하며 사용자의 상태만 CLOSED로 변경
-    // 여러 MatchRequest를 불러오지 않고 하나의 update 쿼리로 처리
+    // 최종 매칭 확정 시 확정한 두 사용자의 다른 매칭들을 한 번에 종료하는 쿼리
+    // 최종 확정된 MatchRequest는 제외하며, 각 행에서 두 사용자 쪽 상태만 CLOSED로 변경
+    // (두 사용자가 함께 들어 있는 행은 유니크 제약상 확정 행뿐이므로, 대상 행에는 한 명만 들어 있음)
+    // 대상 행을 서브쿼리에서 match_request_id 오름차순으로 먼저 잠근 뒤 변경
+    // → 모든 확정 처리가 같은 순서로 잠그므로 동시에 확정해도 데드락이 생기지 않음
+    // → 두 사용자의 행을 한 쿼리에 모아야 전체 잠금 순서가 정렬됨(사용자별 쿼리 2개면 순서가 깨짐)
+    // 잠긴 행은 기다림(SKIP LOCKED 아님): 확정 시에는 다른 요청을 빠짐없이 닫아야 함
     @Modifying(flushAutomatically = true)
     @Query(value = """
     UPDATE match_requests mr
     SET
         user_low_status = CASE
-            WHEN mr.user_low_id = :userId
+            WHEN mr.user_low_id IN (:userId1, :userId2)
             THEN 'CLOSED'
             ELSE mr.user_low_status
         END,
         user_high_status = CASE
-            WHEN mr.user_high_id = :userId
+            WHEN mr.user_high_id IN (:userId1, :userId2)
             THEN 'CLOSED'
             ELSE mr.user_high_status
         END
-    WHERE mr.match_request_id <> :confirmedMatchRequestId
-      AND (
-          mr.user_low_id = :userId
-          OR mr.user_high_id = :userId
-      )
-      AND (
-          (mr.user_low_id = :userId AND mr.user_low_status <> 'CLOSED')
-          OR
-          (mr.user_high_id = :userId AND mr.user_high_status <> 'CLOSED')
-      )
+    WHERE mr.match_request_id IN (
+        SELECT target.match_request_id
+        FROM match_requests target
+        WHERE target.match_request_id <> :confirmedMatchRequestId
+          AND (
+              (target.user_low_id IN (:userId1, :userId2) AND target.user_low_status <> 'CLOSED')
+              OR
+              (target.user_high_id IN (:userId1, :userId2) AND target.user_high_status <> 'CLOSED')
+          )
+        ORDER BY target.match_request_id
+        FOR NO KEY UPDATE
+    )
     """, nativeQuery = true)
-    int closeOtherMatchRequestsForUser(
-            @Param("userId") Long userId,
+    int closeOtherMatchRequestsForUsers(
+            @Param("userId1") Long userId1,
+            @Param("userId2") Long userId2,
             @Param("confirmedMatchRequestId") Long confirmedMatchRequestId
     );
 
@@ -408,6 +500,8 @@ public interface MatchRepository extends JpaRepository<MatchRequests, Long> {
     // 정지 등의 사유로 해당 사용자의 진행 중인 매칭들을 종료하는 쿼리
     // 양쪽 모두 최종 확정된 MatchRequest는 제외하며 사용자의 상태만 CLOSED로 변경
     // 이미 CLOSED인 상태는 제외하고 하나의 update 쿼리로 처리
+    // 대상 행을 서브쿼리에서 match_request_id 오름차순으로 먼저 잠근 뒤 변경
+    // (확정 처리의 closeOtherMatchRequestsForUsers와 같은 잠금 순서)
     @Modifying(flushAutomatically = true)
     @Query(value = """
     UPDATE match_requests mr
@@ -422,19 +516,21 @@ public interface MatchRepository extends JpaRepository<MatchRequests, Long> {
             THEN 'CLOSED'
             ELSE mr.user_high_status
         END
-    WHERE (
-        mr.user_low_id = :userId
-        OR mr.user_high_id = :userId
+    WHERE mr.match_request_id IN (
+        SELECT target.match_request_id
+        FROM match_requests target
+        WHERE NOT (
+              target.user_low_status = 'FINAL_CONFIRMED'
+              AND target.user_high_status = 'FINAL_CONFIRMED'
+          )
+          AND (
+              (target.user_low_id = :userId AND target.user_low_status <> 'CLOSED')
+              OR
+              (target.user_high_id = :userId AND target.user_high_status <> 'CLOSED')
+          )
+        ORDER BY target.match_request_id
+        FOR NO KEY UPDATE
     )
-      AND NOT (
-          mr.user_low_status = 'FINAL_CONFIRMED'
-          AND mr.user_high_status = 'FINAL_CONFIRMED'
-      )
-      AND (
-          (mr.user_low_id = :userId AND mr.user_low_status <> 'CLOSED')
-          OR
-          (mr.user_high_id = :userId AND mr.user_high_status <> 'CLOSED')
-      )
     """, nativeQuery = true)
     int closeUnconfirmedMatchRequestsForUser(@Param("userId") Long userId);
 }

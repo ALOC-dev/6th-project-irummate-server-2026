@@ -5,11 +5,8 @@ import com.irummate.domain.matching.dto.MatchConfirmRequestDto;
 import com.irummate.domain.matching.dto.MatchingRequestDto;
 import com.irummate.domain.matching.dto.MatchingResponseDto;
 import com.irummate.domain.matching.service.MatchingService;
-import com.irummate.global.aop.AuthRole;
 import com.irummate.global.aop.RequiresCertification;
-import com.irummate.global.aop.RequiresAuth;
 import com.irummate.global.aop.RequiresMatchDate;
-import com.irummate.global.aop.RequiresSurvey;
 import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
 import com.irummate.global.response.GlobalApiResponse;
@@ -43,9 +40,7 @@ public class MatchingController {
             @ApiResponse(responseCode = "403", description = "접근 권한이 없거나, 설문 작성 또는 이번 학기 기숙사 인증이 완료되지 않았거나, 매칭 기간이 아닙니다."),
             @ApiResponse(responseCode = "404", description = "사용자를 찾을 수 없거나 매칭 일정이 설정되어 있지 않습니다.")
     })
-    @RequiresAuth(roles = AuthRole.USER)
     @RequiresMatchDate
-    @RequiresSurvey
     @RequiresCertification
     @GetMapping("/status")
     public ResponseEntity<GlobalApiResponse<?>> getMatchingStatus(
@@ -71,8 +66,6 @@ public class MatchingController {
             @ApiResponse(responseCode = "404", description = "사용자 또는 설문 정보를 찾을 수 없거나, 매칭 일정이 설정되지 않았거나, 추천 가능한 상대가 없습니다."),
             @ApiResponse(responseCode = "409", description = "이미 최종 매칭되었거나, 오늘 이미 추천을 완료했거나, 다른 매칭 추천 요청을 처리 중입니다.")
     })
-    @RequiresAuth(roles = AuthRole.USER)
-    @RequiresSurvey
     @RequiresCertification
     @RequiresMatchDate
     @PostMapping("/match")
@@ -92,8 +85,6 @@ public class MatchingController {
             @ApiResponse(responseCode = "404", description = "사용자 또는 매칭 요청을 찾을 수 없거나 매칭 일정이 설정되어 있지 않습니다."),
             @ApiResponse(responseCode = "409", description = "현재 매칭 상태에서는 하트 전달 또는 거절을 할 수 없습니다.")
     })
-    @RequiresAuth(roles = AuthRole.USER)
-    @RequiresSurvey
     @RequiresCertification
     @RequiresMatchDate
     @PatchMapping("/requests")
@@ -124,8 +115,6 @@ public class MatchingController {
             @ApiResponse(responseCode = "404", description = "사용자, 설문 정보 또는 매칭 요청을 찾을 수 없습니다."),
             @ApiResponse(responseCode = "409", description = "이미 최종 매칭된 사용자가 있거나 현재 상태에서 확정할 수 없습니다.")
     })
-    @RequiresAuth(roles = AuthRole.USER)
-    @RequiresSurvey
     @RequiresCertification
     @PatchMapping("/requests/confirm")
     public ResponseEntity<GlobalApiResponse<?>> sendConfirm(
@@ -136,8 +125,8 @@ public class MatchingController {
         return ResponseEntity.ok(GlobalApiResponse.success(HttpStatus.OK, "매칭 확정 전달 성공", null));
     }
 
-    @RequiresAuth(roles = AuthRole.USER)
-    @RequiresSurvey
+
+
     @RequiresCertification
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "최종 확정 상대의 연락처 조회 성공"),

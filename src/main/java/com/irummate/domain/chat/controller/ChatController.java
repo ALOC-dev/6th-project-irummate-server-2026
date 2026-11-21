@@ -89,7 +89,7 @@ public class ChatController {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<GlobalApiResponse<?>> handleUnreadableRequest() {
         return ResponseEntity.badRequest().body(GlobalApiResponse.error(
-                HttpStatus.BAD_REQUEST, ErrorCode.INVALID_INPUT.getMessage(), null));
+                ErrorCode.INVALID_INPUT, ErrorCode.INVALID_INPUT.getMessage(), null));
     }
 
     @GetMapping("/unread-count")

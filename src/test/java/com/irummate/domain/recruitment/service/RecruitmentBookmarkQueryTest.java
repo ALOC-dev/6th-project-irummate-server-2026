@@ -18,6 +18,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
@@ -160,7 +161,7 @@ class RecruitmentBookmarkQueryTest {
         statistics.clear();
         try {
             RecruitmentBookmarkService service = new RecruitmentBookmarkService(
-                    bookmarks, mock(RecruitmentsRepository.class), mock(UsersRepository.class));
+                    bookmarks, mock(RecruitmentsRepository.class), mock(UsersRepository.class), Clock.system(ZoneId.of("Asia/Seoul")));
             var response = new TransactionTemplate(transactionManager).execute(tx ->
                     service.getMyBookmarks(firstUser, null, null, 10));
 

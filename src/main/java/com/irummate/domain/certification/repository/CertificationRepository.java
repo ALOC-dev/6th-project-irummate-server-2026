@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -34,6 +35,20 @@ public interface CertificationRepository extends JpaRepository<Certification, Lo
     Optional<Certification> findTopByUser_IdOrderByCreatedAtDesc(Long userId);
 
     boolean existsByUser_IdAndSemester(Long userId, String semester);
+
+    // 현재 학기의 유효한 승인 인증 여부만 조회
+    @Query("""
+        SELECT COUNT(c) > 0 FROM Certification c
+        WHERE c.user.id = :userId
+            AND c.semester = :semester
+            AND c.certificationStatus = CertificationStatus.APPROVED
+            AND (c.expiresAt IS NULL OR c.expiresAt > :now)
+    """)
+    boolean existsApprovedCertification(
+            @Param("userId") Long userId,
+            @Param("semester") String semester,
+            @Param("now") LocalDateTime now
+    );
 
     void deleteAllByUser_Id(Long userId);
 

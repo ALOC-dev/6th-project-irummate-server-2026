@@ -2,6 +2,7 @@ package com.irummate.domain.user.dto;
 
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Null;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -15,6 +16,8 @@ public class UserDetailsUpdateRequestDto {
     @Min(value = 1, message = "age must be at least 1.")
     private Integer age;
 
+    // 성별은 최초 등록 후 수정 불가
+    @Null(message = "성별은 최초 등록 후 변경할 수 없습니다.")
     private String gender;
     private String department;
     private String phoneNumber;
@@ -27,11 +30,6 @@ public class UserDetailsUpdateRequestDto {
     @AssertTrue(message = "studentId cannot be blank.")
     public boolean isStudentIdValid() {
         return studentId == null || !studentId.isBlank();
-    }
-
-    @AssertTrue(message = "gender cannot be blank.")
-    public boolean isGenderValid() {
-        return gender == null || gender.equals("MALE") || gender.equals("FEMALE");
     }
 
     @AssertTrue(message = "department cannot be blank.")
@@ -49,7 +47,6 @@ public class UserDetailsUpdateRequestDto {
         return realName != null
                 || studentId != null
                 || age != null
-                || gender != null
                 || department != null
                 || phoneNumber != null;
     }

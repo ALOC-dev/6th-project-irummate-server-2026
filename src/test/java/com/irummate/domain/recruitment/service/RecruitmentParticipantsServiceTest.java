@@ -20,6 +20,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
@@ -33,7 +34,7 @@ class RecruitmentParticipantsServiceTest {
     private final RecruitmentParticipantsRepository participants = mock(RecruitmentParticipantsRepository.class);
     private final HashIdsUtils hashIds = new HashIdsUtils("recruitment-participants-test", "8");
     private final RecruitmentParticipationService service = new RecruitmentParticipationService(
-            recruitments, participants, mock(UsersRepository.class), hashIds, mock(RecruitmentBookmarksRepository.class), mock(RecruitmentChatRoomService.class));
+            recruitments, participants, mock(UsersRepository.class), hashIds, mock(RecruitmentBookmarksRepository.class), Clock.system(ZoneId.of("Asia/Seoul")), mock(RecruitmentChatRoomService.class));
     private final LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
     private final Users author = user(1L);
     private final Users member = user(2L);

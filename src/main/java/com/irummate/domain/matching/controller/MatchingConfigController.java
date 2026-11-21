@@ -2,8 +2,6 @@ package com.irummate.domain.matching.controller;
 
 import com.irummate.domain.matching.dto.MatchingConfigDto;
 import com.irummate.domain.matching.service.MatchingConfigService;
-import com.irummate.global.aop.AuthRole;
-import com.irummate.global.aop.RequiresAuth;
 import com.irummate.global.response.GlobalApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -31,7 +29,6 @@ public class MatchingConfigController {
             @ApiResponse(responseCode = "403", description = "관리자 권한이 없거나 정지 또는 탈퇴한 계정입니다."),
             @ApiResponse(responseCode = "404", description = "사용자를 찾을 수 없거나 설문 및 매칭 일정이 설정되어 있지 않습니다.")
     })
-    @RequiresAuth(roles = AuthRole.ADMIN)
     @GetMapping("/match/config")
     public ResponseEntity<GlobalApiResponse<MatchingConfigDto>> getMatchDate(@AuthenticationPrincipal Long userId){
 
@@ -47,7 +44,6 @@ public class MatchingConfigController {
             @ApiResponse(responseCode = "403", description = "관리자 권한이 없거나 정지 또는 탈퇴한 계정입니다."),
             @ApiResponse(responseCode = "404", description = "사용자를 찾을 수 없습니다.")
     })
-    @RequiresAuth(roles = AuthRole.ADMIN)
     @PatchMapping("/match/config")
     public ResponseEntity<GlobalApiResponse<?>> setMatchDate(@AuthenticationPrincipal Long userId,
             @Valid @RequestBody MatchingConfigDto matchingConfigDto){

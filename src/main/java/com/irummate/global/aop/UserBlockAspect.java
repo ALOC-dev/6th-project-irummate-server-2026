@@ -17,7 +17,7 @@ import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.expression.spel.support.SimpleEvaluationContext;
 import org.springframework.stereotype.Component;
 
-// 기존 인증·인가 검증(100)이 완료된 뒤 차단을 검사한다.
+// 공통 이용 조건 검증(100) 이후 차단을 확인
 @Aspect
 @Component
 @Order(200)

@@ -2,6 +2,8 @@ package com.irummate.global.jwt;
 
 import com.irummate.domain.user.entity.UserStatus;
 import com.irummate.domain.user.repository.UsersRepository;
+import com.irummate.global.exception.ErrorCode;
+import com.irummate.global.security.SecurityErrorResponseWriter;
 import com.irummate.global.util.HashIdsUtils;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
@@ -26,13 +28,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtTokenProvider jwtTokenProvider;
     private final HashIdsUtils hashIdsUtils;
     private final UsersRepository usersRepository;
+    private final SecurityErrorResponseWriter errorWriter;
 
     public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider,
                                    HashIdsUtils hashIdsUtils,
-                                   UsersRepository usersRepository) {
+                                   UsersRepository usersRepository,
+                                   SecurityErrorResponseWriter errorWriter) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.hashIdsUtils = hashIdsUtils;
         this.usersRepository = usersRepository;
+        this.errorWriter = errorWriter;
     }
 
     @Override
@@ -67,7 +72,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 });
             } catch (RuntimeException e) {
                 SecurityContextHolder.clearContext();
-                response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+                errorWriter.write(response, ErrorCode.UNAUTHORIZED);
                 return;
             }
         }

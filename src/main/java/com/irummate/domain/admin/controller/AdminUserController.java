@@ -5,8 +5,6 @@ import com.irummate.domain.admin.dto.AdminUserResponseDto;
 import com.irummate.domain.admin.dto.AdminUsersResponseDto;
 import com.irummate.domain.admin.dto.AdminUserBanRequestDto;
 import com.irummate.domain.admin.service.AdminUserService;
-import com.irummate.global.aop.AuthRole;
-import com.irummate.global.aop.RequiresAuth;
 import com.irummate.global.response.GlobalApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -29,7 +27,6 @@ public class AdminUserController {
     private final AdminUserService adminUserService;
 
     @GetMapping
-    @RequiresAuth(roles = AuthRole.ADMIN)
     public ResponseEntity<GlobalApiResponse<AdminUsersResponseDto>> getUsers(
             @AuthenticationPrincipal Long adminUserId,
             @RequestParam(defaultValue = "0") int page,
@@ -43,7 +40,6 @@ public class AdminUserController {
     }
 
     @GetMapping("/{userId}")
-    @RequiresAuth(roles = AuthRole.ADMIN)
     public ResponseEntity<GlobalApiResponse<AdminUserDetailResponseDto>> getUser(
             @AuthenticationPrincipal Long adminUserId,
             @PathVariable String userId
@@ -56,7 +52,6 @@ public class AdminUserController {
     }
 
     @PatchMapping("/{userId}/ban")
-    @RequiresAuth(roles = AuthRole.ADMIN)
     public ResponseEntity<GlobalApiResponse<AdminUserResponseDto>> banUser(
             @AuthenticationPrincipal Long adminUserId,
             @PathVariable String userId,
@@ -70,7 +65,6 @@ public class AdminUserController {
     }
 
     @PatchMapping("/{userId}/unban")
-    @RequiresAuth(roles = AuthRole.ADMIN)
     public ResponseEntity<GlobalApiResponse<AdminUserResponseDto>> unbanUser(
             @AuthenticationPrincipal Long adminUserId,
             @PathVariable String userId
