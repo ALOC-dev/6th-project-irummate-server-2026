@@ -1,13 +1,10 @@
 package com.irummate.global.security;
 
-import tools.jackson.databind.json.JsonMapper;
-import com.irummate.global.response.GlobalApiResponse;
+import com.irummate.global.exception.ErrorCode;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -18,12 +15,12 @@ import java.security.NoSuchAlgorithmException;
 public class NoticeIngestKeyFilter extends OncePerRequestFilter {
     private final byte[] expectedDigest;
     private final boolean configured;
-    private final JsonMapper objectMapper;
+    private final SecurityErrorResponseWriter errorWriter;
 
-    public NoticeIngestKeyFilter(String key, JsonMapper objectMapper) {
+    public NoticeIngestKeyFilter(String key, SecurityErrorResponseWriter errorWriter) {
         configured = !key.isBlank();
         expectedDigest = digest(key);
-        this.objectMapper = objectMapper;
+        this.errorWriter = errorWriter;
     }
 
     @Override
@@ -31,11 +28,7 @@ public class NoticeIngestKeyFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         String key = request.getHeader("X-Ingest-Key");
         if (!configured || key == null || !MessageDigest.isEqual(expectedDigest, digest(key))) {
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-            response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-            objectMapper.writeValue(response.getWriter(), GlobalApiResponse.error(
-                    HttpStatus.UNAUTHORIZED, "수집 API 인증에 실패했습니다.", null));
+            errorWriter.write(response, ErrorCode.UNAUTHORIZED, "수집 API 인증에 실패했습니다.");
             return;
         }
         chain.doFilter(request, response);

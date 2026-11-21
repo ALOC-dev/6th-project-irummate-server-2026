@@ -3,14 +3,12 @@ package com.irummate.global.exception;
 
 import com.irummate.global.response.GlobalApiResponse;
 import lombok.extern.slf4j.Slf4j;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -26,14 +24,9 @@ public class GlobalExceptionController {
     // 요청 관리 Handler
     // JSON 형식 오류를 공통 400 응답으로 처리
     @ExceptionHandler(HttpMessageNotReadableException.class)
-    public ResponseEntity<GlobalApiResponse<?>> handleInputFormat(Exception e, HttpServletRequest request) {
-        String path = request.getRequestURI().substring(request.getContextPath().length());
-        boolean notice = "/api/notices".equals(path) || "/internal/notices".equals(path);
-        if (!notice) {
-            log.warn("Invalid request body: {}", e.getClass().getSimpleName());
-        }
-        return ResponseEntity.badRequest().body(GlobalApiResponse.error(
-                HttpStatus.BAD_REQUEST, "요청 값이나 형식이 올바르지 않습니다.", null));
+    public ResponseEntity<GlobalApiResponse<?>> handleInputFormat(HttpMessageNotReadableException e) {
+        log.warn("Invalid request body: {}", e.getClass().getSimpleName());
+        return errorResponse(ErrorCode.INVALID_INPUT, "요청 값이나 형식이 올바르지 않습니다.", null);
     }
 
     // UUID·숫자·Enum 등 요청 파라미터의 타입 변환 실패를 400으로 처리
@@ -42,11 +35,7 @@ public class GlobalExceptionController {
 
         log.warn("Request parameter type mismatch: {}", e.getName());
 
-        HttpStatus status = HttpStatus.BAD_REQUEST;
-
-        return ResponseEntity
-                .status(status)
-                .body(GlobalApiResponse.error(status, "요청 값이나 형식이 올바르지 않습니다.", null));
+        return errorResponse(ErrorCode.INVALID_INPUT, "요청 값이나 형식이 올바르지 않습니다.", null);
     }
 
     @ExceptionHandler({
@@ -58,16 +47,12 @@ public class GlobalExceptionController {
     ) {
         log.warn("Database unavailable or pool exhausted: {}", e.getMessage());
 
-        HttpStatus status = HttpStatus.SERVICE_UNAVAILABLE;
+        ErrorCode errorCode = ErrorCode.DATABASE_BUSY;
 
         return ResponseEntity
-                .status(status)
+                .status(errorCode.getHttpStatus())
                 .header(HttpHeaders.RETRY_AFTER, "2")
-                .body(GlobalApiResponse.error(
-                        status,
-                        "요청이 몰리고 있습니다. 잠시 후 다시 시도해주세요.",
-                        null
-                ));
+                .body(GlobalApiResponse.error(errorCode, errorCode.getMessage(), null));
     }
 
 
@@ -79,11 +64,7 @@ public class GlobalExceptionController {
 
         log.warn("Internal Server Error: {}",e.getMessage());
 
-        HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
-
-        return ResponseEntity
-                .status(status)
-                .body(GlobalApiResponse.error(status, "서버 내부 오류입니다.", null));
+        return errorResponse(ErrorCode.INTERNAL_ERROR, "서버 내부 오류입니다.", null);
     }
 
 
@@ -105,11 +86,7 @@ public class GlobalExceptionController {
                 ))
                 .toList();
 
-        HttpStatus status = HttpStatus.BAD_REQUEST;
-
-        return ResponseEntity
-                .status(status)
-                .body(GlobalApiResponse.error(status, "필수 항목 누락 / 값 범위 초과", errors));
+        return errorResponse(ErrorCode.INVALID_INPUT, "필수 항목 누락 / 값 범위 초과", errors);
     }
 
 
@@ -121,13 +98,7 @@ public class GlobalExceptionController {
 
         log.warn("BusinessException: {}", e.getMessage());
 
-        ErrorCode errorCode = e.getErrorCode();
-
-        HttpStatus httpStatus = errorCode.getHttpStatus();
-
-        return ResponseEntity
-                .status(httpStatus)
-                .body(GlobalApiResponse.error(httpStatus, e.getMessage(), null));
+        return errorResponse(e.getErrorCode(), e.getMessage(), null);
 
     }
 
@@ -141,9 +112,7 @@ public class GlobalExceptionController {
 
         ErrorCode errorCode = ErrorCode.UPDATE_CONFLICT;
 
-        return ResponseEntity
-                .status(errorCode.getHttpStatus())
-                .body(GlobalApiResponse.error(errorCode.getHttpStatus(), errorCode.getMessage(), null));
+        return errorResponse(errorCode, errorCode.getMessage(), null);
     }
 
     // 모든 API에서 발생한 비관적 잠금 실패를 409로 응답
@@ -156,14 +125,13 @@ public class GlobalExceptionController {
 
         ErrorCode errorCode = ErrorCode.LOCK_CONFLICT;
 
-        return ResponseEntity
-                .status(errorCode.getHttpStatus())
-                .body(GlobalApiResponse.error(
-                        errorCode.getHttpStatus(),
-                        errorCode.getMessage(),
-                        null
-                ));
+        return errorResponse(errorCode, errorCode.getMessage(), null);
 
     }
 
+    private ResponseEntity<GlobalApiResponse<?>> errorResponse(
+            ErrorCode errorCode, String message, List<GlobalApiResponse.ErrorResponse> errors
+    ) {
+        return ResponseEntity.status(errorCode.getHttpStatus()).body(GlobalApiResponse.error(errorCode, message, errors));
+    }
 }

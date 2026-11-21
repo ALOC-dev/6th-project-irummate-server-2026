@@ -3,16 +3,12 @@ package com.irummate.global.config;
 import com.irummate.global.jwt.JwtAuthenticationFilter;
 import com.irummate.global.security.NoticeIngestKeyFilter;
 import com.irummate.global.exception.ErrorCode;
-import com.irummate.global.response.GlobalApiResponse;
-import tools.jackson.databind.json.JsonMapper;
+import com.irummate.global.security.SecurityErrorResponseWriter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -24,7 +20,6 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @Configuration
@@ -63,20 +58,20 @@ public class SecurityConfig {
     @Bean
     @Order(1)
     public SecurityFilterChain noticeIngestSecurityFilterChain(HttpSecurity http,
-            @Value("${notice.ingest-key:}") String key, JsonMapper objectMapper) throws Exception {
+            @Value("${notice.ingest-key:}") String key, SecurityErrorResponseWriter errorWriter) throws Exception {
         return http.securityMatcher("/internal/notices")
                 .csrf(csrf -> csrf.disable())
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .addFilterBefore(new NoticeIngestKeyFilter(key, objectMapper), UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(new NoticeIngestKeyFilter(key, errorWriter), UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
                 .build();
     }
 
     @Bean
     @Order(2)
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, JsonMapper objectMapper) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, SecurityErrorResponseWriter errorWriter) throws Exception {
         http
 
                 .csrf(csrf -> csrf.disable())
@@ -84,21 +79,12 @@ public class SecurityConfig {
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable())
 
-                // 무단 침입 발생 시 대처 요령 설정 (에러 핸들링)
-                // 만약 통행증(토큰)도 없는 유저가 비밀 방(인증이 필요한 API)에 들어오려고 하다가 걸리면,
-                // 조용히 401 Unauthorized(인증되지 않음) 에러를 발생시켜 내쫓으라고 지시합니다.
+                // 인증 실패와 권한 거절을 공통 오류 형식으로 반환
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint((request, response, authException) ->
-                                response.sendError(HttpServletResponse.SC_UNAUTHORIZED))
-                        // 권한 거절은 기존 공통 오류 형식으로 응답
-                        .accessDeniedHandler((request, response, accessDeniedException) -> {
-                            HttpStatus status = ErrorCode.FORBIDDEN.getHttpStatus();
-                            response.setStatus(status.value());
-                            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-                            response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-                            objectMapper.writeValue(response.getWriter(), GlobalApiResponse.error(
-                                    status, ErrorCode.FORBIDDEN.getMessage(), null));
-                        })
+                                errorWriter.write(response, ErrorCode.UNAUTHORIZED))
+                        .accessDeniedHandler((request, response, accessDeniedException) ->
+                                errorWriter.write(response, ErrorCode.FORBIDDEN))
                 )
 
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)

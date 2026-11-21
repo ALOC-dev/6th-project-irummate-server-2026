@@ -61,7 +61,7 @@ class AdminCertificationControllerTest {
         mvc.perform(request)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400))
-                .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
                 .andExpect(jsonPath("$.message").value("요청 값이나 형식이 올바르지 않습니다."));
         verifyNoInteractions(service);
     }
@@ -110,7 +110,7 @@ class AdminCertificationControllerTest {
 
         mvc.perform(get("/api/admin/certifications/{certificationId}", publicId))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("NOT_FOUND"))
+                .andExpect(jsonPath("$.code").value("CERTIFICATION_NOT_FOUND"))
                 .andExpect(jsonPath("$.message").value(ErrorCode.CERTIFICATION_NOT_FOUND.getMessage()));
     }
 
@@ -122,7 +122,7 @@ class AdminCertificationControllerTest {
         mvc.perform(patch("/api/admin/certifications/{certificationId}/approve", publicId)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"expectedVersion\":0}"))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("CONFLICT"))
+                .andExpect(jsonPath("$.code").value("CERTIFICATION_SEMESTER_MISMATCH"))
                 .andExpect(jsonPath("$.message").value("현재 학기의 인증 요청만 승인할 수 있습니다."));
     }
 
@@ -131,7 +131,9 @@ class AdminCertificationControllerTest {
     void approvalRequiresNonNegativeReviewVersion(String body) throws Exception {
         mvc.perform(patch("/api/admin/certifications/{certificationId}/approve", publicId)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
+                .andExpect(jsonPath("$.errors[0].field").value("expectedVersion"));
         verifyNoInteractions(service);
     }
 
@@ -152,7 +154,7 @@ class AdminCertificationControllerTest {
         mvc.perform(patch("/api/admin/certifications/{certificationId}/approve", publicId)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"expectedVersion\":3}"))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("CONFLICT"))
+                .andExpect(jsonPath("$.code").value("UPDATE_CONFLICT"))
                 .andExpect(jsonPath("$.message").value(ErrorCode.UPDATE_CONFLICT.getMessage()));
     }
 

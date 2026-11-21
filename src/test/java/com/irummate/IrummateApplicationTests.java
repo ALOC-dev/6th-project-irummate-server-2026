@@ -1422,7 +1422,7 @@ class IrummateApplicationTests {
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith("application/json"))
                 .andExpect(jsonPath("$.status").value(400))
-                .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
                 .andExpect(jsonPath("$.message").value("요청 값이나 형식이 올바르지 않습니다."))
                 .andExpect(jsonPath("$.data").doesNotExist())
                 .andExpect(jsonPath("$.trace").doesNotExist());
@@ -1443,7 +1443,7 @@ class IrummateApplicationTests {
     }
 
     @Test
-    void noticeIngestJsonFormatResponseRemainsUnchanged() throws Exception {
+    void noticeIngestJsonFormatErrorUsesCommonCode() throws Exception {
         mockMvc.perform(post("/internal/notices")
                         .header("X-Ingest-Key", "test-ingest-key")
                         .contentType("application/json")
@@ -1451,15 +1451,40 @@ class IrummateApplicationTests {
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith("application/json"))
                 .andExpect(jsonPath("$.status").value(400))
-                .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
                 .andExpect(jsonPath("$.message").value("요청 값이나 형식이 올바르지 않습니다."))
                 .andExpect(jsonPath("$.errors").doesNotExist());
+    }
+
+    @Test
+    void noticePaginationErrorUsesCommonCodeAndKeepsCustomMessage() throws Exception {
+        mockMvc.perform(get("/api/notices").param("page", "-1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
+                .andExpect(jsonPath("$.message").value("page must be nonnegative and size must be between 1 and 100"));
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"/api/admin/users", "/api/matching/status", "/api/users/blocks"})
     void protectedEndpointsStillRequireLoginWithoutAuthenticationAspect(String path) throws Exception {
-        mockMvc.perform(get(path)).andExpect(status().isUnauthorized());
+        mockMvc.perform(get(path))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith("application/json"))
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
+                .andExpect(jsonPath("$.message").value(ErrorCode.UNAUTHORIZED.getMessage()));
+    }
+
+    @Test
+    void invalidUserIdentifierInJwtReturnsCommonUnauthorizedResponse() throws Exception {
+        String token = jwtTokenProvider.createAccessToken("!", "USER", "test-session");
+
+        mockMvc.perform(get("/api/matching/status").header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith("application/json"))
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
+                .andExpect(jsonPath("$.message").value(ErrorCode.UNAUTHORIZED.getMessage()));
     }
 
     @ParameterizedTest

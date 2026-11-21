@@ -90,7 +90,10 @@ public enum ErrorCode {
 
     // ── 500 ──
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다."),
-    KAKAO_API_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "카카오 API 연동 중 오류가 발생했습니다.");
+    KAKAO_API_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "카카오 API 연동 중 오류가 발생했습니다."),
+
+    // ── 503 ──
+    DATABASE_BUSY(HttpStatus.SERVICE_UNAVAILABLE, "요청이 몰리고 있습니다. 잠시 후 다시 시도해주세요.");
 
     private final HttpStatus httpStatus;
     private final String message;
