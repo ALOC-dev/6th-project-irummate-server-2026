@@ -33,6 +33,6 @@ public class FaqChatController {
     public ResponseEntity<GlobalApiResponse<Void>> handleInvalidBody() {
         ErrorCode error = ErrorCode.INVALID_INPUT;
         return ResponseEntity.status(error.getHttpStatus())
-                .body(GlobalApiResponse.error(error.getHttpStatus(), error.getMessage(), null));
+                .body(GlobalApiResponse.error(error, error.getMessage(), null));
     }
 }
