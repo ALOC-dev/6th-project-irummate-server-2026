@@ -106,7 +106,7 @@ class MatchingCertificationTest {
 
         assertThat(pair.getStatusOf(1L)).isEqualTo(MatchStatus.REJECTED);
         verifyNoInteractions(certificationRepository);
-        verify(chatService).closeChatRoomByMatchRequestId(10L);
+        verify(chatService).closeMatchRoomByMatchRequestId(10L);
     }
 
     private void prepareAction(boolean confirm) {

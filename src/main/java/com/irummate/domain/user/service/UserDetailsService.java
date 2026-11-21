@@ -196,7 +196,7 @@ public class UserDetailsService {
 
         matchRepository.findAllByUserLow_IdOrUserHigh_Id(userPk, userPk)
                 .forEach(match -> match.closeForWithdrawal(userPk));
-        chatRoomRepository.findAllByParticipantId(userPk).forEach(room -> room.close());
+        chatRoomRepository.findMatchRoomsByParticipantId(userPk).forEach(room -> room.close());
         matchRepository.flush();
 
         if (userPreferencesRepository.existsById(userPk)) {

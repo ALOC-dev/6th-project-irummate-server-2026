@@ -1,5 +1,7 @@
 package com.irummate.domain.recruitment.service;
 
+import com.irummate.domain.chat.service.RecruitmentChatRoomService;
+
 import com.irummate.domain.recruitment.dto.RecruitmentCreateRequestDto;
 import com.irummate.domain.recruitment.dto.RecruitmentUpdateRequestDto;
 import com.irummate.domain.recruitment.entity.*;
@@ -33,7 +35,7 @@ class RecruitmentScheduleServiceTest {
     private final RecruitmentParticipantsRepository participants = mock(RecruitmentParticipantsRepository.class);
     private final UsersRepository users = mock(UsersRepository.class);
     private final RecruitmentService service = new RecruitmentService(recruitments, participants, users,
-            mock(RecruitmentBookmarksRepository.class), Clock.system(ZoneId.of("Asia/Seoul")));
+            mock(RecruitmentBookmarksRepository.class), Clock.system(ZoneId.of("Asia/Seoul")), mock(RecruitmentChatRoomService.class));
     private final LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul")).withNano(0);
     private final JsonMapper mapper = JsonMapper.builder().build();
 

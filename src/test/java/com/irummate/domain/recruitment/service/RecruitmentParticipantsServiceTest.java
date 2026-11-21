@@ -1,5 +1,7 @@
 package com.irummate.domain.recruitment.service;
 
+import com.irummate.domain.chat.service.RecruitmentChatRoomService;
+
 import com.irummate.domain.recruitment.dto.RecruitmentParticipantRemoveRequestDto;
 import com.irummate.domain.recruitment.entity.*;
 import com.irummate.domain.recruitment.repository.RecruitmentParticipantsRepository;
@@ -32,7 +34,7 @@ class RecruitmentParticipantsServiceTest {
     private final RecruitmentParticipantsRepository participants = mock(RecruitmentParticipantsRepository.class);
     private final HashIdsUtils hashIds = new HashIdsUtils("recruitment-participants-test", "8");
     private final RecruitmentParticipationService service = new RecruitmentParticipationService(
-            recruitments, participants, mock(UsersRepository.class), hashIds, mock(RecruitmentBookmarksRepository.class), Clock.system(ZoneId.of("Asia/Seoul")));
+            recruitments, participants, mock(UsersRepository.class), hashIds, mock(RecruitmentBookmarksRepository.class), Clock.system(ZoneId.of("Asia/Seoul")), mock(RecruitmentChatRoomService.class));
     private final LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
     private final Users author = user(1L);
     private final Users member = user(2L);

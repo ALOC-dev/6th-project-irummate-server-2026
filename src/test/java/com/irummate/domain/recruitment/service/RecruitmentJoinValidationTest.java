@@ -1,5 +1,7 @@
 package com.irummate.domain.recruitment.service;
 
+import com.irummate.domain.chat.service.RecruitmentChatRoomService;
+
 import com.irummate.domain.recruitment.entity.*;
 import com.irummate.domain.recruitment.repository.RecruitmentParticipantsRepository;
 import com.irummate.domain.recruitment.repository.RecruitmentsRepository;
@@ -33,7 +35,7 @@ class RecruitmentJoinValidationTest {
     private final UsersRepository users = mock(UsersRepository.class);
     private final EntityManager entityManager = mock(EntityManager.class);
     private final RecruitmentParticipationService service =
-            new RecruitmentParticipationService(recruitments, participants, users, mock(HashIdsUtils.class), mock(RecruitmentBookmarksRepository.class), Clock.system(ZoneId.of("Asia/Seoul")));
+            new RecruitmentParticipationService(recruitments, participants, users, mock(HashIdsUtils.class), mock(RecruitmentBookmarksRepository.class), Clock.system(ZoneId.of("Asia/Seoul")), mock(RecruitmentChatRoomService.class));
     private final LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
     private final Users viewer = user(2L);
 

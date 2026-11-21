@@ -493,6 +493,10 @@ public interface MatchRepository extends JpaRepository<MatchRequests, Long> {
             @Param("userId2") Long userId2
     );
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT mr FROM MatchRequests mr WHERE mr.id = :id")
+    Optional<MatchRequests> findByIdForUpdate(@Param("id") Long id);
+
     // 정지 등의 사유로 해당 사용자의 진행 중인 매칭들을 종료하는 쿼리
     // 양쪽 모두 최종 확정된 MatchRequest는 제외하며 사용자의 상태만 CLOSED로 변경
     // 이미 CLOSED인 상태는 제외하고 하나의 update 쿼리로 처리

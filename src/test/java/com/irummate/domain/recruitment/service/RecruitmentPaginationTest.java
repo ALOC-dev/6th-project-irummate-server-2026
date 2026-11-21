@@ -1,5 +1,7 @@
 package com.irummate.domain.recruitment.service;
 
+import com.irummate.domain.chat.service.RecruitmentChatRoomService;
+
 import com.irummate.domain.recruitment.repository.RecruitmentParticipantsRepository;
 import com.irummate.domain.recruitment.repository.RecruitmentsRepository;
 import com.irummate.domain.recruitment.repository.RecruitmentBookmarksRepository;
@@ -22,7 +24,7 @@ class RecruitmentPaginationTest {
     private final RecruitmentParticipantsRepository participants = mock(RecruitmentParticipantsRepository.class);
     private final UsersRepository users = mock(UsersRepository.class);
     private final RecruitmentParticipationService participationService =
-            new RecruitmentParticipationService(recruitments, participants, users, mock(HashIdsUtils.class), mock(RecruitmentBookmarksRepository.class), Clock.system(ZoneId.of("Asia/Seoul")));
+            new RecruitmentParticipationService(recruitments, participants, users, mock(HashIdsUtils.class), mock(RecruitmentBookmarksRepository.class), Clock.system(ZoneId.of("Asia/Seoul")), mock(RecruitmentChatRoomService.class));
 
     @ParameterizedTest
     @CsvSource({"-1,10", "0,0", "0,-1", "0,51", "0,100000"})

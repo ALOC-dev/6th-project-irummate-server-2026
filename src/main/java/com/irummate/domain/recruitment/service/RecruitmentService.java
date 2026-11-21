@@ -1,5 +1,6 @@
 package com.irummate.domain.recruitment.service;
 
+import com.irummate.domain.chat.service.RecruitmentChatRoomService;
 import com.irummate.domain.recruitment.dto.*;
 import com.irummate.domain.recruitment.entity.*;
 import com.irummate.domain.recruitment.repository.RecruitmentParticipantsRepository;
@@ -32,6 +33,7 @@ public class RecruitmentService {
     private final UsersRepository usersRepository;
     private final RecruitmentBookmarksRepository recruitmentBookmarksRepository;
     private final Clock clock;
+    private final RecruitmentChatRoomService recruitmentChatRooms;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -173,6 +175,7 @@ public class RecruitmentService {
 
         // 작성자 DB에 저장
         recruitmentParticipantsRepository.save(participant);
+        recruitmentChatRooms.create(savedRecruitment, user, now);
 
         return RecruitmentCreateResponseDto.from(savedRecruitment);
     }
@@ -254,6 +257,7 @@ public class RecruitmentService {
         LocalDateTime now = LocalDateTime.now(clock);
 
         // 게시글 update
+        LocalDateTime previousActivityAt = recruitment.getActivityAt();
         recruitment.update(
                 request.getTitle(),
                 request.getPlace(),
@@ -264,6 +268,9 @@ public class RecruitmentService {
                 request.getAmount(),
                 now
         );
+        if (!previousActivityAt.equals(recruitment.getActivityAt())) {
+            recruitmentChatRooms.reschedule(recruitmentId, recruitment.getActivityAt());
+        }
 
         recruitmentsRepository.flush();
 
@@ -396,6 +403,7 @@ public class RecruitmentService {
 
         // 취소
         recruitment.cancel(request.getCancelReason(), now);
+        recruitmentChatRooms.close(recruitmentId);
 
         recruitmentsRepository.flush();
 

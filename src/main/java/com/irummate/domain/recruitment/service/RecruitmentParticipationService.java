@@ -1,5 +1,6 @@
 package com.irummate.domain.recruitment.service;
 
+import com.irummate.domain.chat.service.RecruitmentChatRoomService;
 import com.irummate.domain.recruitment.dto.*;
 import com.irummate.domain.recruitment.entity.*;
 import com.irummate.domain.recruitment.repository.RecruitmentParticipantsRepository;
@@ -35,6 +36,7 @@ public class RecruitmentParticipationService {
     private final HashIdsUtils hashIdsUtils;
     private final RecruitmentBookmarksRepository recruitmentBookmarksRepository;
     private final Clock clock;
+    private final RecruitmentChatRoomService recruitmentChatRooms;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -110,6 +112,7 @@ public class RecruitmentParticipationService {
 
         // 참여 기록 저장
         recruitmentParticipantsRepository.save(participant);
+        recruitmentChatRooms.join(recruitmentId, user, now);
     }
 
 
@@ -154,6 +157,7 @@ public class RecruitmentParticipationService {
             throw new BusinessException(ErrorCode.INVALID_RECRUITMENT_STATUS_TRANSITION);
         }
         participant.leave(now);
+        recruitmentChatRooms.leave(recruitmentId, userId, now);
 
 
         // 게시글 참여자 수 감소
@@ -268,6 +272,7 @@ public class RecruitmentParticipationService {
 
         // 사용자 참여 취소
         participant.remove(request.getRemovalReason(), now);
+        recruitmentChatRooms.leave(recruitmentId, targetUserId, now);
 
 
         // 게시글 참여 인원 감소

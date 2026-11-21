@@ -1,5 +1,7 @@
 package com.irummate.domain.recruitment.service;
 
+import com.irummate.domain.chat.service.RecruitmentChatRoomService;
+
 import com.irummate.domain.recruitment.dto.RecruitmentSort;
 import com.irummate.domain.recruitment.dto.RecruitmentDetailResponseDto;
 import com.irummate.domain.recruitment.dto.RecruitmentLeaveResponseDto;
@@ -38,9 +40,9 @@ class RecruitmentParticipationResponseTest {
     private final RecruitmentParticipantsRepository participants = mock(RecruitmentParticipantsRepository.class);
     private final UsersRepository users = mock(UsersRepository.class);
     private final RecruitmentBookmarksRepository bookmarks = mock(RecruitmentBookmarksRepository.class);
-    private final RecruitmentService service = new RecruitmentService(recruitments, participants, users, bookmarks, Clock.system(ZoneId.of("Asia/Seoul")));
+    private final RecruitmentService service = new RecruitmentService(recruitments, participants, users, bookmarks, Clock.system(ZoneId.of("Asia/Seoul")), mock(RecruitmentChatRoomService.class));
     private final RecruitmentParticipationService participationService =
-            new RecruitmentParticipationService(recruitments, participants, users, mock(HashIdsUtils.class), bookmarks, Clock.system(ZoneId.of("Asia/Seoul")));
+            new RecruitmentParticipationService(recruitments, participants, users, mock(HashIdsUtils.class), bookmarks, Clock.system(ZoneId.of("Asia/Seoul")), mock(RecruitmentChatRoomService.class));
     private final Users viewer = user(2L);
 
     @ParameterizedTest

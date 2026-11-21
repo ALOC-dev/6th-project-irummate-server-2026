@@ -119,8 +119,8 @@ public class MatchingService {
                 // 두 사용자의 다른 요청을 한 쿼리로 id 순서대로 잠근 뒤 닫음(동시 확정 시 데드락 방지)
                 closeOtherMatchRequests(userId, receiverId, myMatchRequest);
 
-                chatService.closeChatRoomsByUserIdExceptMatchRequestId(userId, myMatchRequest.getId());
-                chatService.closeChatRoomsByUserIdExceptMatchRequestId(receiverId, myMatchRequest.getId());
+                chatService.closeOtherMatchRoomsByUserId(userId, myMatchRequest.getId());
+                chatService.closeOtherMatchRoomsByUserId(receiverId, myMatchRequest.getId());
             }
 
             return;
@@ -233,7 +233,7 @@ public class MatchingService {
         }
 
         targetMatchRequest.updateStatusOf(userId, MatchStatus.REJECTED);
-        chatService.closeChatRoomByMatchRequestId(targetMatchRequest.getId());
+        chatService.closeMatchRoomByMatchRequestId(targetMatchRequest.getId());
     }
 
 
@@ -757,7 +757,7 @@ public class MatchingService {
 
         // 3. 채팅방은 마지막에 닫음(엔티티 변경 → 커밋 시 UPDATE)
         //    → 확정 처리와 같은 테이블 순서(match_requests → chat_rooms)
-        chatService.closeChatRoomsByUserId(userId);
+        chatService.closeMatchRoomsByUserId(userId);
     }
 
 
