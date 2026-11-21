@@ -5,7 +5,6 @@ import com.irummate.domain.chat.dto.ChatRoomUnreadCountDto;
 import com.irummate.domain.chat.entity.ChatMessage;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -47,52 +46,40 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
     // cursor보다 오래된 메시지를 최신순으로 조회한다.
     List<ChatMessage> findByRoom_IdAndIdLessThanOrderByIdDesc(Long roomId, Long cursor, Pageable pageable);
 
-    // 채팅방 목록에서 마지막 메시지를 보여주기 위해 사용한다.
-    Optional<ChatMessage> findTopByRoom_IdOrderByCreatedAtDesc(Long roomId);
+    boolean existsByIdAndRoom_Id(Long messageId, Long roomId);
 
-    // 특정 채팅방에서 내가 읽지 않은 메시지 수를 조회한다.
-    int countByRoom_IdAndSender_IdNotAndIsReadFalse(Long roomId, Long senderId);
+    @Query("SELECT MAX(message.id) FROM ChatMessage message WHERE message.room.id = :roomId")
+    Optional<Long> findLastMessageId(@Param("roomId") Long roomId);
+
+    @Query("""
+            SELECT membership.user.id AS userId, COUNT(message.id) AS totalUnreadCount,
+                   SUM(CASE WHEN membership.room.id = :roomId THEN 1 ELSE 0 END) AS unreadCount
+            FROM ChatRoomMember membership
+            JOIN ChatMessage message ON message.room = membership.room
+            WHERE membership.user.id IN :userIds AND membership.leftAt IS NULL
+              AND message.sender.id <> membership.user.id
+              AND message.id > COALESCE(membership.lastReadMessageId, 0L)
+            GROUP BY membership.user.id
+            """)
+    List<RecipientUnreadCount> countUnreadByRecipients(@Param("roomId") Long roomId,
+                                                        @Param("userIds") List<Long> userIds);
+
+    interface RecipientUnreadCount {
+        Long getUserId();
+        Long getTotalUnreadCount();
+        Long getUnreadCount();
+    }
 
     // 현재 유저가 참여한 채팅방 안에서만 전체 안 읽은 메시지 수를 조회한다.
     @Query("""
             SELECT COUNT(cm)
-            FROM ChatMessage cm
-            JOIN cm.room cr
-            JOIN cr.matchRequest mr
-            WHERE (mr.userLow.id = :userId OR mr.userHigh.id = :userId)
+            FROM ChatRoomMember membership
+            JOIN ChatMessage cm ON cm.room = membership.room
+            WHERE membership.user.id = :userId AND membership.leftAt IS NULL
               AND cm.sender.id <> :userId
-              AND cm.isRead = false
+              AND cm.id > COALESCE(membership.lastReadMessageId, 0L)
             """)
-    int countUnreadByParticipantId(@Param("userId") Long userId);
-
-    // 현재 시점에 읽음 처리할 메시지 중 가장 큰 ID를 조회한다.
-    @Query("""
-            SELECT MAX(cm.id)
-            FROM ChatMessage cm
-            WHERE cm.room.id = :roomId
-              AND cm.sender.id <> :userId
-              AND cm.isRead = false
-            """)
-    Optional<Long> findLastUnreadMessageId(
-            @Param("roomId") Long roomId,
-            @Param("userId") Long userId
-    );
-
-    // 조회한 경계 ID까지의 상대방 메시지를 한 번의 UPDATE로 읽음 처리한다.
-    @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query("""
-            UPDATE ChatMessage cm
-            SET cm.isRead = true
-            WHERE cm.room.id = :roomId
-              AND cm.sender.id <> :userId
-              AND cm.isRead = false
-              AND cm.id <= :lastReadMessageId
-            """)
-    int markUnreadMessagesAsRead(
-            @Param("roomId") Long roomId,
-            @Param("userId") Long userId,
-            @Param("lastReadMessageId") Long lastReadMessageId
-    );
+    int countUnreadByCurrentMemberId(@Param("userId") Long userId);
 
     // 채팅방 목록에 표시할 각 방의 마지막 메시지를 한 번에 조회한다.
     @Query("""
@@ -117,10 +104,12 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
                 cm.room.id,
                 COUNT(cm)
             )
-            FROM ChatMessage cm
-            WHERE cm.room.id IN :roomIds
+            FROM ChatRoomMember membership
+            JOIN ChatMessage cm ON cm.room = membership.room
+            WHERE membership.user.id = :userId AND membership.leftAt IS NULL
+              AND membership.room.id IN :roomIds
               AND cm.sender.id <> :userId
-              AND cm.isRead = false
+              AND cm.id > COALESCE(membership.lastReadMessageId, 0L)
             GROUP BY cm.room.id
             """)
     List<ChatRoomUnreadCountDto> countUnreadByRoomIds(

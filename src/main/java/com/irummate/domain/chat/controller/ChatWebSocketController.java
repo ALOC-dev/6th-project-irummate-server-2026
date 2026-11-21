@@ -5,6 +5,7 @@ import com.irummate.domain.chat.dto.ChatMessageResponseDto;
 import com.irummate.domain.chat.dto.ChatMessageEventDto;
 import com.irummate.domain.chat.dto.ChatMessageSendRequestDto;
 import com.irummate.domain.chat.service.ChatService;
+import com.irummate.domain.chat.service.RecruitmentChatDelivery;
 import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
 import com.irummate.global.jwt.WebSocketPrincipal;
@@ -25,15 +26,18 @@ public class ChatWebSocketController {
     private final ChatService chatService;
     private final SimpMessagingTemplate messagingTemplate;
     private final HashIdsUtils hashIdsUtils;
+    private final RecruitmentChatDelivery recruitmentDelivery;
 
     public ChatWebSocketController(
             ChatService chatService,
             SimpMessagingTemplate messagingTemplate,
-            HashIdsUtils hashIdsUtils
+            HashIdsUtils hashIdsUtils,
+            RecruitmentChatDelivery recruitmentDelivery
     ) {
         this.chatService = chatService;
         this.messagingTemplate = messagingTemplate;
         this.hashIdsUtils = hashIdsUtils;
+        this.recruitmentDelivery = recruitmentDelivery;
     }
 
     @MessageMapping("/chat/send")
@@ -53,6 +57,11 @@ public class ChatWebSocketController {
                 senderId,
                 requestDto.getMessage()
         );
+
+        if (chatService.isRecruitmentRoom(roomId)) {
+            recruitmentDelivery.publishMessage(roomId, senderId, responseDto);
+            return;
+        }
 
         Long partnerId = chatService.getPartnerId(roomId, senderId);
         String encodedPartnerId = hashIdsUtils.encode(partnerId);

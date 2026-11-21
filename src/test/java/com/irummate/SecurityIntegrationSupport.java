@@ -1,5 +1,6 @@
 package com.irummate;
 
+import com.irummate.domain.chat.service.ChatService;
 import com.irummate.global.jwt.JwtTokenProvider;
 import com.irummate.global.util.HashIdsUtils;
 import io.jsonwebtoken.Jwts;
@@ -48,6 +49,7 @@ abstract class SecurityIntegrationSupport {
     @MockitoBean S3Client s3Client;
     @MockitoBean S3Presigner s3Presigner;
     @Autowired JdbcTemplate jdbc;
+    @Autowired ChatService chatService;
     @Autowired JwtTokenProvider tokens;
     @Autowired HashIdsUtils hashIds;
     @Autowired JsonMapper json;
@@ -77,10 +79,7 @@ abstract class SecurityIntegrationSupport {
                                            match_percentage, created_at)
                 VALUES (?, ?, 'HEART', 'HEART', 90, now()) RETURNING match_request_id
                 """, Long.class, ALICE, BOB);
-        roomId = jdbc.queryForObject("""
-                INSERT INTO chat_rooms(match_request_id, status, created_at)
-                VALUES (?, 'OPEN', now()) RETURNING id
-                """, Long.class, matchId);
+        roomId = chatService.createChatRoomIfNotExists(matchId).getId();
     }
 
     private UUID session(long userId, String refreshToken) throws Exception {

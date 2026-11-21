@@ -11,6 +11,17 @@ import com.irummate.domain.certification.service.CertificationLifecycleService;
 import com.irummate.domain.certification.entity.Certification;
 import com.irummate.domain.certification.entity.CertificationStatus;
 import com.irummate.domain.certification.repository.CertificationRepository;
+import com.irummate.domain.chat.entity.ChatRoom;
+import com.irummate.domain.chat.entity.ChatRoomMember;
+import com.irummate.domain.chat.entity.ChatRoomType;
+import com.irummate.domain.chat.service.ChatService;
+import com.irummate.domain.matching.entity.MatchRequests;
+import com.irummate.domain.matching.entity.MatchStatus;
+import com.irummate.domain.matching.service.MatchingService;
+import com.irummate.domain.recruitment.entity.RecruitmentCategory;
+import com.irummate.domain.recruitment.entity.RecruitmentStatus;
+import com.irummate.domain.recruitment.entity.RecruitmentVisibility;
+import com.irummate.domain.recruitment.entity.Recruitments;
 import com.irummate.domain.recruitment.scheduler.RecruitmentScheduler;
 import com.irummate.domain.survey.dto.SurveyAnswers;
 import com.irummate.domain.survey.entity.SurveyAnswerField;
@@ -37,6 +48,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -55,6 +67,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
@@ -68,6 +81,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -157,6 +171,257 @@ class IrummateApplicationTests {
 
     @Autowired
     private JsonMapper jsonMapper;
+
+    @Autowired
+    private MatchingService matchingService;
+
+    @Autowired
+    private ChatService chatService;
+
+    @Test
+    @Transactional
+    void mutualHeartsCreateOneRoomWithBothMembersAndPreserveChatFlow() {
+        MatchRequests request = persistChatMatch("mutual-hearts", MatchStatus.RECOMMENDED);
+        Users first = request.getUserLow();
+        Users second = request.getUserHigh();
+
+        matchingService.heart(first.getId(), second.getId());
+        assertThat(chatService.getChatRooms(first.getId()).getRooms()).isEmpty();
+        matchingService.heart(second.getId(), first.getId());
+
+        var room = chatService.createChatRoomIfNotExists(request.getId());
+        assertThat(room.getType()).isEqualTo(ChatRoomType.MATCH);
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT user_id FROM chat_room_members
+                WHERE room_id = ? AND left_at IS NULL AND last_read_message_id IS NULL
+                ORDER BY user_id
+                """, Long.class, room.getId())).containsExactly(first.getId(), second.getId());
+        assertThat(chatService.getChatRooms(first.getId()).getRooms()).hasSize(1);
+
+        var sent = chatService.sendMessage(room.getId(), first.getId(), "hello");
+        var later = chatService.sendMessage(room.getId(), first.getId(), "not seen yet");
+        assertThat(chatService.getTotalUnreadCountValue(second.getId())).isEqualTo(2);
+        assertThat(chatService.markMessagesAsRead(room.getId(), second.getId(), sent.getMessageId()).event().getLastReadMessageId())
+                .isEqualTo(sent.getMessageId());
+        assertThat(chatService.getTotalUnreadCountValue(second.getId())).isEqualTo(1);
+        assertThat(chatService.getMessages(room.getId(), first.getId(), null, 10).getMessages())
+                .extracting(message -> message.getIsRead()).containsExactly(false, true);
+        assertThat(chatService.getMessages(room.getId(), second.getId(), null, 10).getMessages())
+                .extracting(message -> message.getIsRead()).containsExactly(false, true);
+
+        assertThat(chatService.markMessagesAsRead(room.getId(), second.getId(), later.getMessageId()).event()).isNotNull();
+        assertThat(chatService.markMessagesAsRead(room.getId(), second.getId(), sent.getMessageId()).event()).isNull();
+        assertThat(chatService.markMessagesAsRead(room.getId(), second.getId(), later.getMessageId()).event()).isNull();
+        assertThat(chatService.getTotalUnreadCountValue(second.getId())).isZero();
+    }
+
+    @Test
+    @Transactional
+    void matchingParticipantsLoseChatAccessWhenTheirMembershipEnds() {
+        MatchRequests request = persistChatMatch("former-chat-member", MatchStatus.HEART);
+        Long senderId = request.getUserLow().getId();
+        Long formerMemberId = request.getUserHigh().getId();
+        ChatRoom room = chatService.createChatRoomIfNotExists(request.getId());
+        long messageId = chatService.sendMessage(room.getId(), senderId, "hello").getMessageId();
+        assertThat(chatService.getTotalUnreadCountValue(formerMemberId)).isEqualTo(1);
+
+        chatService.closeMatchRoomByMatchRequestId(request.getId());
+        assertThat(chatService.getMessages(room.getId(), formerMemberId, null, 10).getMessages()).hasSize(1);
+        assertThat(assertThrows(BusinessException.class,
+                () -> chatService.sendMessage(room.getId(), formerMemberId, "closed")).getErrorCode())
+                .isEqualTo(ErrorCode.CHAT_ROOM_CLOSED);
+
+        jdbcTemplate.update("UPDATE chat_room_members SET left_at = CURRENT_TIMESTAMP WHERE room_id = ? AND user_id = ?",
+                room.getId(), formerMemberId);
+
+        assertThat(chatService.getChatRooms(formerMemberId).getRooms()).isEmpty();
+        assertThat(chatService.getTotalUnreadCountValue(formerMemberId)).isZero();
+        assertThat(assertThrows(BusinessException.class,
+                () -> chatService.getMessages(room.getId(), formerMemberId, null, 10)).getErrorCode())
+                .isEqualTo(ErrorCode.NOT_CHAT_PARTICIPANT);
+        assertThat(assertThrows(BusinessException.class,
+                () -> chatService.markMessagesAsRead(room.getId(), formerMemberId, messageId)).getErrorCode())
+                .isEqualTo(ErrorCode.NOT_CHAT_PARTICIPANT);
+        assertThat(assertThrows(BusinessException.class,
+                () -> chatService.sendMessage(room.getId(), formerMemberId, "left")).getErrorCode())
+                .isEqualTo(ErrorCode.NOT_CHAT_PARTICIPANT);
+    }
+
+    @Test
+    @Transactional
+    void finalMatchConfirmationClosesOnlyOtherMatchRooms() {
+        long firstId = savePreferences("chat-confirm-first", 1, 1, "FEMALE");
+        long secondId = savePreferences("chat-confirm-second", 1, 1, "FEMALE");
+        long thirdId = savePreferences("chat-confirm-third", 1, 1, "FEMALE");
+        MatchRequests selected = persistHeartMatch(firstId, secondId);
+        MatchRequests other = persistHeartMatch(firstId, thirdId);
+        long selectedRoomId = chatService.createChatRoomIfNotExists(selected.getId()).getId();
+        long otherRoomId = chatService.createChatRoomIfNotExists(other.getId()).getId();
+
+        long recruitmentRoomId = persistRecruitmentChat(selected.getUserLow(), List.of(selected.getUserLow())).getId();
+
+        matchingService.confirm(firstId, secondId);
+        matchingService.confirm(secondId, firstId);
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(entityManager.find(ChatRoom.class, selectedRoomId).isClosed()).isFalse();
+        assertThat(entityManager.find(ChatRoom.class, otherRoomId).isClosed()).isTrue();
+        assertThat(entityManager.find(ChatRoom.class, recruitmentRoomId).isClosed()).isFalse();
+    }
+
+    @Test
+    @Transactional
+    void recruitmentReadCursorChangesOnlyTheReadersUnreadCount() {
+        MatchRequests match = persistChatMatch("group-chat-read", MatchStatus.HEART);
+        Users first = match.getUserLow();
+        Users second = match.getUserHigh();
+        Users third = Users.builder().oauthId("group-chat-third").nickname("third").build();
+        entityManager.persist(third);
+        long matchRoomId = chatService.createChatRoomIfNotExists(match.getId()).getId();
+        long matchMessageId = chatService.sendMessage(matchRoomId, first.getId(), "MATCH message").getMessageId();
+        ChatRoom groupRoom = persistRecruitmentChat(first, List.of(first, second, third));
+        var groupMessage = chatService.sendMessage(groupRoom.getId(), first.getId(), "RECRUITMENT message");
+
+        assertThat(chatService.markMessagesAsRead(groupRoom.getId(), second.getId(), groupMessage.getMessageId()).event())
+                .isNotNull();
+        var rooms = chatService.getChatRooms(second.getId()).getRooms();
+        assertThat(rooms).hasSize(2);
+        var groupItem = rooms.stream().filter(room -> room.getType() == ChatRoomType.RECRUITMENT).findFirst().orElseThrow();
+        assertThat(groupItem.getRecruitment().recruitmentId()).isEqualTo(groupRoom.getRecruitment().getId());
+        assertThat(groupItem.getRecruitment().participantCount()).isEqualTo(3);
+        assertThat(groupItem.getUnreadCount()).isZero();
+        assertThat(chatService.getTotalUnreadCountValue(second.getId())).isEqualTo(1);
+        assertThat(chatService.getTotalUnreadCountValue(first.getId())).isZero();
+        assertThat(chatService.getTotalUnreadCountValue(third.getId())).isEqualTo(1);
+        assertThat(chatService.createNotification(groupRoom.getId(), first.getId(), third.getId(), groupMessage)
+                .getUnreadCount()).isEqualTo(1);
+        assertThat(chatService.getMessages(groupRoom.getId(), third.getId(), null, 10).getMessages().getFirst().getIsRead())
+                .isNull();
+        assertThat(assertThrows(BusinessException.class,
+                () -> chatService.markMessagesAsRead(groupRoom.getId(), second.getId(), matchMessageId)).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_INPUT);
+    }
+
+    @Test
+    @Transactional
+    void readEndpointRequiresAnExplicitPositiveMessageId() throws Exception {
+        MatchRequests match = persistChatMatch("chat-read-endpoint", MatchStatus.HEART);
+        long readerId = match.getUserHigh().getId();
+        long roomId = chatService.createChatRoomIfNotExists(match.getId()).getId();
+        long messageId = chatService.sendMessage(roomId, match.getUserLow().getId(), "hello").getMessageId();
+        UUID sessionId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                INSERT INTO login_sessions(id, user_id, refresh_token_hash, expires_at, created_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP + INTERVAL '1 day', CURRENT_TIMESTAMP)
+                """, sessionId, readerId, sessionId.toString());
+        String token = jwtTokenProvider.createAccessToken(hashIdsUtils.encode(readerId), "USER", sessionId.toString());
+
+        for (String body : List.of("", "{}", "{\"lastReadMessageId\":0}", "{malformed")) {
+            mockMvc.perform(patch("/api/chat/rooms/{roomId}/read", roomId)
+                            .header("Authorization", "Bearer " + token)
+                            .contentType("application/json").content(body))
+                    .andExpect(status().isBadRequest());
+        }
+        assertThat(chatService.getTotalUnreadCountValue(readerId)).isEqualTo(1);
+        mockMvc.perform(patch("/api/chat/rooms/{roomId}/read", roomId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType("application/json").content("{\"lastReadMessageId\":" + messageId + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("data.success").value(true));
+        assertThat(chatService.getTotalUnreadCountValue(readerId)).isZero();
+    }
+
+    private ChatRoom persistRecruitmentChat(Users author, List<Users> members) {
+        LocalDateTime activityAt = LocalDateTime.now(ZoneId.of("Asia/Seoul")).plusDays(1);
+        Recruitments recruitment = Recruitments.builder()
+                .author(author)
+                .title("chat test recruitment")
+                .category(RecruitmentCategory.MEAL)
+                .status(RecruitmentStatus.OPEN)
+                .visibility(RecruitmentVisibility.VISIBLE)
+                .activityAt(activityAt)
+                .deadlineAt(activityAt.minusMinutes(30))
+                .nowParticipants(members.size())
+                .maxParticipants(3)
+                .build();
+        entityManager.persist(recruitment);
+        ChatRoom recruitmentRoom = ChatRoom.forRecruitment(recruitment);
+        entityManager.persist(recruitmentRoom);
+        for (Users member : members) {
+            entityManager.persist(ChatRoomMember.join(recruitmentRoom, member, recruitmentRoom.getCreatedAt()));
+        }
+        return recruitmentRoom;
+    }
+
+    private MatchRequests persistHeartMatch(long lowId, long highId) {
+        MatchRequests request = MatchRequests.builder()
+                .userLow(entityManager.getReference(Users.class, lowId))
+                .userHigh(entityManager.getReference(Users.class, highId))
+                .userLowPreferences(preferencesRepository.getReferenceById(lowId))
+                .userHighPreferences(preferencesRepository.getReferenceById(highId))
+                .userLowStatus(MatchStatus.HEART)
+                .userHighStatus(MatchStatus.HEART)
+                .build();
+        entityManager.persist(request);
+        return request;
+    }
+
+    @Test
+    void simultaneousRoomCreationReusesTheSameRoom() throws Exception {
+        var transaction = new TransactionTemplate(transactionManager);
+        String fixture = "parallel-chat-" + UUID.randomUUID();
+        Long requestId = transaction.execute(status -> persistChatMatch(fixture, MatchStatus.HEART).getId());
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var ready = new CountDownLatch(2);
+            Callable<Long> createRoom = () -> {
+                ready.countDown();
+                assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+                return chatService.createChatRoomIfNotExists(requestId).getId();
+            };
+            var first = executor.submit(createRoom);
+            var second = executor.submit(createRoom);
+
+            Long roomId = first.get(10, TimeUnit.SECONDS);
+            assertThat(second.get(10, TimeUnit.SECONDS)).isEqualTo(roomId);
+            assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM chat_room_members WHERE room_id = ?",
+                    Long.class, roomId)).isEqualTo(2L);
+        } finally {
+            transaction.executeWithoutResult(status -> {
+                jdbcTemplate.update("DELETE FROM chat_room_members WHERE room_id IN "
+                        + "(SELECT id FROM chat_rooms WHERE match_request_id = ?)", requestId);
+                jdbcTemplate.update("DELETE FROM chat_rooms WHERE match_request_id = ?", requestId);
+                jdbcTemplate.update("DELETE FROM match_requests WHERE match_request_id = ?", requestId);
+                jdbcTemplate.update("DELETE FROM users WHERE oauth_id IN (?, ?)", fixture + "-1", fixture + "-2");
+            });
+        }
+    }
+
+    private MatchRequests persistChatMatch(String fixture, MatchStatus initialStatus) {
+        Users first = Users.builder().oauthId(fixture + "-1").nickname("first").build();
+        Users second = Users.builder().oauthId(fixture + "-2").nickname("second").build();
+        entityManager.persist(first);
+        entityManager.persist(second);
+        MatchRequests request = MatchRequests.builder()
+                .userLow(first)
+                .userHigh(second)
+                .userLowStatus(initialStatus)
+                .userHighStatus(initialStatus)
+                .build();
+        entityManager.persist(request);
+        return request;
+    }
+
+    @Test
+    @Transactional
+    void chatRoomSchemaRejectsRecruitmentRoomWithoutARecruitment() {
+        var invalidRoom = assertThrows(DataIntegrityViolationException.class, () -> jdbcTemplate.update("""
+                INSERT INTO chat_rooms (type, status, close_at, created_at)
+                VALUES ('RECRUITMENT', 'OPEN', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """));
+        assertThat(invalidRoom.getMostSpecificCause().getMessage()).contains("ck_chat_rooms_type");
+    }
 
     @Test
     @Transactional

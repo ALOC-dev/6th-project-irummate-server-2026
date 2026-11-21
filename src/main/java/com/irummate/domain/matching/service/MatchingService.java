@@ -91,8 +91,8 @@ public class MatchingService {
             if(myMatchRequest.isConfirmed()){
                 myMatchRequest.getUserHighPreferences().updateIsMatched();
                 myMatchRequest.getUserLowPreferences().updateIsMatched();
-                chatService.closeChatRoomsByUserIdExceptMatchRequestId(userId, myMatchRequest.getId());
-                chatService.closeChatRoomsByUserIdExceptMatchRequestId(receiverId, myMatchRequest.getId());
+                chatService.closeOtherMatchRoomsByUserId(userId, myMatchRequest.getId());
+                chatService.closeOtherMatchRoomsByUserId(receiverId, myMatchRequest.getId());
 
                 closeOtherMatchRequests(userId, myMatchRequest);
                 closeOtherMatchRequests(receiverId, myMatchRequest);
@@ -198,7 +198,7 @@ public class MatchingService {
         }
 
         targetMatchRequest.updateStatusOf(userId, MatchStatus.REJECTED);
-        chatService.closeChatRoomByMatchRequestId(targetMatchRequest.getId());
+        chatService.closeMatchRoomByMatchRequestId(targetMatchRequest.getId());
     }
 
 
@@ -662,7 +662,7 @@ public class MatchingService {
     // 단, 양쪽 모두 최종 확정된 MatchRequest는 제외
     @Transactional
     public void closeAllMatchRequestsByUserId(Long userId){
-        chatService.closeChatRoomsByUserId(userId);
+        chatService.closeMatchRoomsByUserId(userId);
         matchRepository.closeUnconfirmedMatchRequestsForUser(userId);
     }
 
