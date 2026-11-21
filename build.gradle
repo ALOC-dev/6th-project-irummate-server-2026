@@ -43,6 +43,9 @@ dependencies {
 	implementation 'org.hibernate.orm:hibernate-vector'
 	runtimeOnly 'org.postgresql:postgresql'
 
+	// OpenAI
+	implementation 'com.openai:openai-java:4.101.0'
+
 	// DB 스키마 변경 이력
 	// implementation 'org.springframework.boot:spring-boot-starter-flyway'
 	// runtimeOnly 'org.flywaydb:flyway-database-postgresql'

@@ -15,6 +15,7 @@ import com.irummate.domain.chat.entity.ChatRoom;
 import com.irummate.domain.chat.entity.ChatRoomMember;
 import com.irummate.domain.chat.entity.ChatRoomType;
 import com.irummate.domain.chat.service.ChatService;
+import com.irummate.domain.chatbot.init.DormitoryFaqSeeder;
 import com.irummate.domain.matching.entity.MatchRequests;
 import com.irummate.domain.matching.entity.MatchStatus;
 import com.irummate.domain.matching.service.MatchingService;
@@ -31,6 +32,7 @@ import com.irummate.domain.user.entity.Users;
 import com.irummate.global.jwt.JwtTokenProvider;
 import com.irummate.global.util.HashIdsUtils;
 import com.irummate.global.util.SemesterUtils;
+import com.openai.client.OpenAIClient;
 import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
 import com.irummate.global.s3.S3Utils;
@@ -105,6 +107,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "notice.ingest-key=test-ingest-key"
 })
 class IrummateApplicationTests {
+
+    // 일반 테스트는 빈 DB에서도 FAQ 적재 및 외부 API 호출을 실행하지 않는다.
+    @MockitoBean
+    private DormitoryFaqSeeder dormitoryFaqSeeder;
+
+    @MockitoBean
+    private OpenAIClient openAIClient;
 
     @TestConfiguration(proxyBeanMethods = false)
     static class PostgresConfiguration {
