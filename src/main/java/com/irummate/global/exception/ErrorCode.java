@@ -12,6 +12,7 @@ public enum ErrorCode {
     BAD_REQUEST(HttpStatus.BAD_REQUEST, "잘못된 요청입니다."),
     INVALID_INPUT(HttpStatus.BAD_REQUEST, "입력값이 유효하지 않습니다."),
     SELF_BLOCK_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "자기 자신을 차단할 수 없습니다."),
+    SELF_REPORT_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "자기 자신을 신고할 수 없습니다."),
     BIO_TOO_LONG(HttpStatus.BAD_REQUEST, "자기소개는 100자를 초과할 수 없습니다."),
     INVALID_IMAGE_FORMAT(HttpStatus.BAD_REQUEST, "JPG/PNG 형식의 이미지만 업로드 가능합니다."),
     IMAGE_SIZE_EXCEEDED(HttpStatus.BAD_REQUEST, "이미지는 5MB를 초과할 수 없습니다."),
@@ -48,6 +49,7 @@ public enum ErrorCode {
 
     // ── 404 ──
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "유저를 찾을 수 없습니다."),
+    REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "신고 내역을 찾을 수 없습니다."),
     CERTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "인증 요청을 찾을 수 없습니다."),
     SURVEY_NOT_FOUND(HttpStatus.NOT_FOUND, "설문 내역을 찾을 수 없습니다."),
     MATCH_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "매칭 요청을 찾을 수 없습니다."),
