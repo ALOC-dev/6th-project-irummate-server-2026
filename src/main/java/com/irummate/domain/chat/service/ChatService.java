@@ -3,7 +3,6 @@ package com.irummate.domain.chat.service;
 import com.irummate.domain.chat.dto.ChatMemberReadCursor;
 import com.irummate.domain.chat.dto.ChatMessageResponseDto;
 import com.irummate.domain.chat.dto.ChatMessagesResponseDto;
-import com.irummate.domain.chat.dto.ChatNotificationDto;
 import com.irummate.domain.chat.dto.ChatReadResponseDto;
 import com.irummate.domain.chat.dto.ChatReadEventDto;
 import com.irummate.domain.chat.dto.ChatReadResult;
@@ -226,32 +225,6 @@ public class ChatService {
         return chatMessageRepository.countUnreadByCurrentMemberId(userId);
     }
 
-    @Transactional(readOnly = true)
-    public ChatNotificationDto createNotification(
-            Long roomId,
-            Long senderId,
-            Long receiverId,
-            ChatMessageResponseDto messageDto
-    ) {
-        Users sender = getUser(senderId);
-        int unreadCount = chatMessageRepository.countUnreadByRoomIds(List.of(roomId), receiverId).stream()
-                .findFirst()
-                .map(count -> count.unreadCount().intValue())
-                .orElse(0);
-        int totalUnreadCount = chatMessageRepository.countUnreadByCurrentMemberId(receiverId);
-
-        return new ChatNotificationDto(
-                roomId,
-                messageDto.getSenderId(),
-                sender.getNickname(),
-                sender.getProfileImageUrl(),
-                messageDto.getMessage(),
-                messageDto.getCreatedAt(),
-                unreadCount,
-                totalUnreadCount
-        );
-    }
-
     @Transactional
     public ChatMessageResponseDto sendMessage(Long roomId, Long senderId, String message) {
         validateSendRequest(roomId, senderId, message);
@@ -267,20 +240,6 @@ public class ChatService {
 
         Boolean isRead = chatRoom.getType() == ChatRoomType.MATCH ? Boolean.FALSE : null;
         return ChatMessageResponseDto.from(savedMessage, hashIdsUtils.encode(senderId), isRead);
-    }
-
-    @Transactional(readOnly = true)
-    public Long getPartnerId(Long roomId, Long userId) {
-        chatRoomAccessService.requireCurrentMember(roomId, userId);
-
-        return chatRoomRepository.findPartnerIdByRoomIdAndUserId(roomId, userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_CHAT_PARTICIPANT));
-    }
-
-    @Transactional(readOnly = true)
-    public boolean isRecruitmentRoom(Long roomId) {
-        return chatRoomRepository.findTypeById(roomId).orElseThrow(() -> new BusinessException(ErrorCode.CHAT_ROOM_NOT_FOUND))
-                == ChatRoomType.RECRUITMENT;
     }
 
     @Transactional

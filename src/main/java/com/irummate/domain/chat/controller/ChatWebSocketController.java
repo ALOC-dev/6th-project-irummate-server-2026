@@ -1,20 +1,16 @@
 package com.irummate.domain.chat.controller;
 
-import com.irummate.domain.chat.dto.ChatNotificationDto;
 import com.irummate.domain.chat.dto.ChatMessageResponseDto;
-import com.irummate.domain.chat.dto.ChatMessageEventDto;
 import com.irummate.domain.chat.dto.ChatMessageSendRequestDto;
+import com.irummate.domain.chat.service.ChatDelivery;
 import com.irummate.domain.chat.service.ChatService;
-import com.irummate.domain.chat.service.RecruitmentChatDelivery;
 import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
 import com.irummate.global.jwt.WebSocketPrincipal;
-import com.irummate.global.util.HashIdsUtils;
 import com.irummate.global.websocket.WebSocketErrorResponseDto;
 import org.springframework.messaging.handler.annotation.MessageExceptionHandler;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.annotation.SendToUser;
 import org.springframework.stereotype.Controller;
 
@@ -24,20 +20,11 @@ import java.security.Principal;
 public class ChatWebSocketController {
 
     private final ChatService chatService;
-    private final SimpMessagingTemplate messagingTemplate;
-    private final HashIdsUtils hashIdsUtils;
-    private final RecruitmentChatDelivery recruitmentDelivery;
+    private final ChatDelivery chatDelivery;
 
-    public ChatWebSocketController(
-            ChatService chatService,
-            SimpMessagingTemplate messagingTemplate,
-            HashIdsUtils hashIdsUtils,
-            RecruitmentChatDelivery recruitmentDelivery
-    ) {
+    public ChatWebSocketController(ChatService chatService, ChatDelivery chatDelivery) {
         this.chatService = chatService;
-        this.messagingTemplate = messagingTemplate;
-        this.hashIdsUtils = hashIdsUtils;
-        this.recruitmentDelivery = recruitmentDelivery;
+        this.chatDelivery = chatDelivery;
     }
 
     @MessageMapping("/chat/send")
@@ -58,18 +45,7 @@ public class ChatWebSocketController {
                 requestDto.getMessage()
         );
 
-        if (chatService.isRecruitmentRoom(roomId)) {
-            recruitmentDelivery.publishMessage(roomId, senderId, responseDto);
-            return;
-        }
-
-        Long partnerId = chatService.getPartnerId(roomId, senderId);
-        String encodedPartnerId = hashIdsUtils.encode(partnerId);
-        ChatNotificationDto notificationDto = chatService.createNotification(roomId, senderId, partnerId, responseDto);
-        ChatMessageEventDto messageEvent = ChatMessageEventDto.from(roomId, responseDto);
-
-        messagingTemplate.convertAndSend("/topic/room/" + roomId, messageEvent);
-        messagingTemplate.convertAndSend("/queue/user/" + encodedPartnerId, notificationDto);
+        chatDelivery.publishMessage(roomId, senderId, responseDto);
     }
 
     @MessageExceptionHandler(BusinessException.class)

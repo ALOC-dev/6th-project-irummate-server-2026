@@ -11,7 +11,10 @@ public enum ErrorCode {
     // ── 400 ──
     BAD_REQUEST(HttpStatus.BAD_REQUEST, "잘못된 요청입니다."),
     INVALID_INPUT(HttpStatus.BAD_REQUEST, "입력값이 유효하지 않습니다."),
+    INVALID_CONSENT_TYPE(HttpStatus.BAD_REQUEST, "지원하지 않는 동의 항목입니다."),
+    INVALID_DOCUMENT_VERSION(HttpStatus.BAD_REQUEST, "동의서 버전 형식이 올바르지 않습니다."),
     SELF_BLOCK_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "자기 자신을 차단할 수 없습니다."),
+    SELF_REPORT_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "자기 자신을 신고할 수 없습니다."),
     BIO_TOO_LONG(HttpStatus.BAD_REQUEST, "자기소개는 100자를 초과할 수 없습니다."),
     INVALID_IMAGE_FORMAT(HttpStatus.BAD_REQUEST, "JPG/PNG 형식의 이미지만 업로드 가능합니다."),
     IMAGE_SIZE_EXCEEDED(HttpStatus.BAD_REQUEST, "이미지는 5MB를 초과할 수 없습니다."),
@@ -30,6 +33,8 @@ public enum ErrorCode {
 
     // ── 403 ──
     FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
+    PROFILE_CONSENT_REQUIRED(HttpStatus.FORBIDDEN, "회원 상세정보 수집·이용 동의가 필요합니다."),
+    CONSENT_NOT_WITHDRAWABLE(HttpStatus.FORBIDDEN, "필수 동의 철회는 앱 설정의 운영팀 문의로 요청해 주세요."),
     USER_BLOCKED(HttpStatus.FORBIDDEN, "해당 사용자와의 상호작용이 제한되어 있습니다."),
     ADMIN_ONLY(HttpStatus.FORBIDDEN, "관리자 권한이 필요합니다."),
     ACCOUNT_BANNED(HttpStatus.FORBIDDEN, "정지된 계정입니다."),
@@ -49,6 +54,7 @@ public enum ErrorCode {
     // ── 404 ──
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "유저를 찾을 수 없습니다."),
     NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "알림을 찾을 수 없습니다."),
+    REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "신고 내역을 찾을 수 없습니다."),
     CERTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "인증 요청을 찾을 수 없습니다."),
     SURVEY_NOT_FOUND(HttpStatus.NOT_FOUND, "설문 내역을 찾을 수 없습니다."),
     MATCH_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "매칭 요청을 찾을 수 없습니다."),
@@ -60,6 +66,8 @@ public enum ErrorCode {
 
     // ── 409 ──
     UPDATE_CONFLICT(HttpStatus.CONFLICT, "요청한 데이터가 변경되었습니다. 다시 조회 후 시도해주세요."),
+    CONSENT_VERSION_CONFLICT(HttpStatus.CONFLICT, "현재 동의서를 다시 확인해 주세요."),
+    ONBOARDING_CONSENT_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "가입 동의 제출이 이미 완료됐습니다."),
     LOCK_CONFLICT(HttpStatus.CONFLICT, "다른 요청을 처리 중입니다. 잠시 후 다시 시도해 주세요."),
     DETAILS_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 필수 정보가 등록된 상태입니다."),
     CERTIFICATION_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 인증 요청이 존재합니다."),

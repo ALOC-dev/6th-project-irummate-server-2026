@@ -1,6 +1,5 @@
 package com.irummate.domain.chat.service;
 
-import com.irummate.domain.chat.entity.ChatRoomType;
 import com.irummate.domain.chat.repository.ChatRoomMemberRepository;
 import com.irummate.domain.chat.repository.ChatRoomRepository;
 import com.irummate.global.exception.BusinessException;
@@ -23,13 +22,5 @@ public class ChatRoomAccessService {
             throw new BusinessException(ErrorCode.CHAT_ROOM_NOT_FOUND);
         }
         throw new BusinessException(ErrorCode.NOT_CHAT_PARTICIPANT);
-    }
-
-    public void requireMatchRoomTopic(Long roomId, Long userId) {
-        requireCurrentMember(roomId, userId);
-        if (chatRoomRepository.findTypeById(roomId).orElseThrow(() -> new BusinessException(ErrorCode.CHAT_ROOM_NOT_FOUND))
-                != ChatRoomType.MATCH) {
-            throw new BusinessException(ErrorCode.INVALID_WEBSOCKET_DESTINATION);
-        }
     }
 }

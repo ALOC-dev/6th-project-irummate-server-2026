@@ -1,5 +1,7 @@
 package com.irummate.domain.user.service;
 
+import com.irummate.domain.privacy.service.PrivacyConsentService;
+
 import com.irummate.domain.user.dto.UserDetailsRequestDto;
 import com.irummate.domain.user.dto.UserDetailsResponseDto;
 import com.irummate.domain.user.dto.UserDetailsUpdateRequestDto;
@@ -55,6 +57,7 @@ public class UserDetailsService {
 
 
     private final UsersRepository usersRepository;
+    private final PrivacyConsentService privacyConsentService;
     private final UserDetailsRepository userDetailsRepository;
     private final LoginSessionRepository loginSessionRepository;
     private final CertificationRepository certificationRepository;
@@ -72,15 +75,15 @@ public class UserDetailsService {
     @Transactional
     public UserDetailsResponseDto createDetails(Long userId, UserDetailsRequestDto request) {
         Long userPk = Long.valueOf(userId);
+        Users user = usersRepository.findByIdForUpdate(userPk)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
         // 이미 상세 정보가 등록된 유저인지 검사합니다.
         if (userDetailsRepository.existsById(userPk)) {
             // 이미 존재한다면 예외(409 Conflict)를 발생시킵니다.
             throw new BusinessException(ErrorCode.DETAILS_ALREADY_EXISTS);
         }
 
-        // 토큰에서 꺼낸 userId가 실제로 가입된 유저인지 확인합니다.
-        Users user = usersRepository.findById(userPk)
-                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND)); // 없으면 404 에러
+        privacyConsentService.requireProfileConsent(userPk);
 
         //입력받은 데이터(Dto)를 바탕으로 실제 DB 테이블 모양새의 객체(Entity)를 조립합니다.
         UserDetails userDetails = UserDetails.builder()

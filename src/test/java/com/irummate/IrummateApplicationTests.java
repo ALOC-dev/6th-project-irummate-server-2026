@@ -1,5 +1,6 @@
 package com.irummate;
 
+import com.irummate.domain.privacy.service.PrivacyConsentService;
 import com.irummate.domain.auth.dto.KakaoTokenResponseDto;
 import com.irummate.domain.auth.dto.KakaoUserInfoResponseDto;
 import com.irummate.domain.admin.service.AdminUserService;
@@ -192,6 +193,9 @@ class IrummateApplicationTests {
     private MockMvc mockMvc;
 
     @Autowired
+    private PrivacyConsentService privacyConsentService;
+
+    @Autowired
     private JwtTokenProvider jwtTokenProvider;
 
     @Autowired
@@ -321,8 +325,6 @@ class IrummateApplicationTests {
         assertThat(chatService.getTotalUnreadCountValue(second.getId())).isEqualTo(1);
         assertThat(chatService.getTotalUnreadCountValue(first.getId())).isZero();
         assertThat(chatService.getTotalUnreadCountValue(third.getId())).isEqualTo(1);
-        assertThat(chatService.createNotification(groupRoom.getId(), first.getId(), third.getId(), groupMessage)
-                .getUnreadCount()).isEqualTo(1);
         assertThat(chatService.getMessages(groupRoom.getId(), third.getId(), null, 10).getMessages().getFirst().getIsRead())
                 .isNull();
         assertThat(assertThrows(BusinessException.class,
@@ -1373,6 +1375,7 @@ class IrummateApplicationTests {
         Users user = Users.builder().oauthId("initial-gender").nickname("initial-gender").build();
         entityManager.persist(user);
         entityManager.flush();
+        privacyConsentService.submitOnboarding(user.getId(), true, "1.0", false, "1.0");
 
         mockMvc.perform(post("/api/users/details")
                         .with(authentication(new TestingAuthenticationToken(user.getId(), null, "ROLE_USER")))

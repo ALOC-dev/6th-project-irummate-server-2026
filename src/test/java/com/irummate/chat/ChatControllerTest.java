@@ -6,10 +6,9 @@ import com.irummate.domain.chat.dto.ChatReadRequestDto;
 import com.irummate.domain.chat.dto.ChatReadResponseDto;
 import com.irummate.domain.chat.dto.ChatReadResult;
 import com.irummate.domain.chat.controller.ChatController;
+import com.irummate.domain.chat.service.ChatDelivery;
 import com.irummate.domain.chat.service.ChatService;
-import com.irummate.domain.chat.service.RecruitmentChatDelivery;
 import org.junit.jupiter.api.Test;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -19,8 +18,8 @@ import static org.mockito.Mockito.when;
 class ChatControllerTest {
 
     private final ChatService chatService = mock(ChatService.class);
-    private final SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
-    private final ChatController controller = new ChatController(chatService, messagingTemplate, mock(RecruitmentChatDelivery.class));
+    private final ChatDelivery delivery = mock(ChatDelivery.class);
+    private final ChatController controller = new ChatController(chatService, delivery);
 
     @Test
     void publishesReadEventWhenMessagesWereUpdated() {
@@ -30,7 +29,7 @@ class ChatControllerTest {
 
         controller.markMessagesAsRead(7L, 2L, new ChatReadRequestDto(105L));
 
-        verify(messagingTemplate).convertAndSend("/topic/room/7", event);
+        verify(delivery).publishRead(7L, event);
     }
 
     @Test
@@ -40,6 +39,6 @@ class ChatControllerTest {
 
         controller.markMessagesAsRead(7L, 2L, new ChatReadRequestDto(105L));
 
-        verifyNoInteractions(messagingTemplate);
+        verifyNoInteractions(delivery);
     }
 }
