@@ -6,8 +6,8 @@ import com.irummate.domain.chat.dto.ChatReadResponseDto;
 import com.irummate.domain.chat.dto.ChatReadResult;
 import com.irummate.domain.chat.dto.ChatRoomsResponseDto;
 import com.irummate.domain.chat.dto.ChatUnreadCountResponseDto;
+import com.irummate.domain.chat.service.ChatDelivery;
 import com.irummate.domain.chat.service.ChatService;
-import com.irummate.domain.chat.service.RecruitmentChatDelivery;
 import com.irummate.global.exception.ErrorCode;
 import com.irummate.global.response.GlobalApiResponse;
 import jakarta.validation.Valid;
@@ -15,7 +15,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -30,14 +29,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class ChatController {
 
     private final ChatService chatService;
-    private final SimpMessagingTemplate messagingTemplate;
-    private final RecruitmentChatDelivery recruitmentDelivery;
+    private final ChatDelivery chatDelivery;
 
-    public ChatController(ChatService chatService, SimpMessagingTemplate messagingTemplate,
-                          RecruitmentChatDelivery recruitmentDelivery) {
+    public ChatController(ChatService chatService, ChatDelivery chatDelivery) {
         this.chatService = chatService;
-        this.messagingTemplate = messagingTemplate;
-        this.recruitmentDelivery = recruitmentDelivery;
+        this.chatDelivery = chatDelivery;
     }
 
     @GetMapping("/rooms")
@@ -74,11 +70,7 @@ public class ChatController {
         ChatReadResult result = chatService.markMessagesAsRead(roomId, userId, request.lastReadMessageId());
 
         if (result.event() != null) {
-            if (chatService.isRecruitmentRoom(roomId)) {
-                recruitmentDelivery.publishRead(roomId, result.event());
-            } else {
-                messagingTemplate.convertAndSend("/topic/room/" + roomId, result.event());
-            }
+            chatDelivery.publishRead(roomId, result.event());
         }
 
         return ResponseEntity.ok(

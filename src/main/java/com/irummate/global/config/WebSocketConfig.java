@@ -1,11 +1,9 @@
 package com.irummate.global.config;
 
-import com.irummate.domain.chat.service.ChatRoomAccessService;
 import com.irummate.domain.chat.service.ChatSocketSessions;
 import com.irummate.domain.user.entity.UserRole;
 import com.irummate.global.security.AccessTokenAuthenticationService;
 import com.irummate.global.jwt.WebSocketPrincipal;
-import com.irummate.global.util.HashIdsUtils;
 import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
 import com.irummate.global.websocket.WebSocketStompErrorHandler;
@@ -32,25 +30,17 @@ import java.security.Principal;
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private static final String BEARER_PREFIX = "Bearer ";
-    private static final String ROOM_TOPIC_PREFIX = "/topic/room/";
-    private static final String USER_QUEUE_PREFIX = "/queue/user/";
     private static final String CHAT_ERROR_DESTINATION = "/user/queue/chat-errors";
     private static final String CHAT_SEND_DESTINATION = "/app/chat/send";
 
     private final AccessTokenAuthenticationService authenticationService;
-    private final ChatRoomAccessService chatRoomAccessService;
-    private final HashIdsUtils hashIdsUtils;
     private final WebSocketStompErrorHandler stompErrorHandler;
     private final ChatSocketSessions chatSockets;
 
     public WebSocketConfig(AccessTokenAuthenticationService authenticationService,
-                            ChatRoomAccessService chatRoomAccessService,
-                            HashIdsUtils hashIdsUtils,
                             WebSocketStompErrorHandler stompErrorHandler,
                             ChatSocketSessions chatSockets) {
         this.authenticationService = authenticationService;
-        this.chatRoomAccessService = chatRoomAccessService;
-        this.hashIdsUtils = hashIdsUtils;
         this.stompErrorHandler = stompErrorHandler;
         this.chatSockets = chatSockets;
     }
@@ -74,9 +64,8 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry registry) {
-        // [SUB] 프론트에서 메시지를 수신하기 위해 구독하는 주소 prefix
-        // /topic은 채팅방 단위 브로드캐스트, /queue는 개인 알림용으로 사용한다.
-        registry.enableSimpleBroker("/topic", "/queue");
+        // 사용자 목적지를 해석한 뒤 연결별 큐로 전달한다.
+        registry.enableSimpleBroker("/queue");
 
         // [PUB] 프론트에서 백엔드로 메시지를 보낼 때 사용하는 주소 prefix
         registry.setApplicationDestinationPrefixes("/app");
@@ -156,67 +145,19 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     }
 
     private void validateSubscribe(StompHeaderAccessor accessor) {
-        Long userId = resolveUserId(accessor.getUser());
         String destination = accessor.getDestination();
-
-        if (destination == null) {
-            throw new BusinessException(ErrorCode.INVALID_WEBSOCKET_DESTINATION);
-        }
-
         if (CHAT_ERROR_DESTINATION.equals(destination)
                 || ("/user" + ChatSocketSessions.EVENTS_QUEUE).equals(destination)
                 || ("/user" + ChatSocketSessions.NOTIFICATIONS_QUEUE).equals(destination)) {
             return;
         }
 
-        if (destination.startsWith(ROOM_TOPIC_PREFIX)) {
-            Long roomId = parseDestinationId(destination, ROOM_TOPIC_PREFIX);
-
-            chatRoomAccessService.requireMatchRoomTopic(roomId, userId);
-
-            return;
-        }
-
-        if (destination.startsWith(USER_QUEUE_PREFIX)) {
-            Long destinationUserId = parseHashedDestinationUserId(destination);
-
-            if (!destinationUserId.equals(userId)) {
-                throw new BusinessException(ErrorCode.FORBIDDEN);
-            }
-
-            return;
-        }
-
         throw new BusinessException(ErrorCode.INVALID_WEBSOCKET_DESTINATION);
-    }
-
-    private Long resolveUserId(Principal principal) {
-        if (principal instanceof WebSocketPrincipal webSocketPrincipal) {
-            return webSocketPrincipal.getUserId();
-        }
-
-        throw new BusinessException(ErrorCode.WEBSOCKET_UNAUTHORIZED);
     }
 
     private void requireUserRole(UserRole role) {
         if (role != UserRole.USER) {
             throw new BusinessException(ErrorCode.WEBSOCKET_UNAUTHORIZED);
-        }
-    }
-
-    private Long parseDestinationId(String destination, String prefix) {
-        try {
-            return Long.valueOf(destination.substring(prefix.length()));
-        } catch (RuntimeException e) {
-            throw new BusinessException(ErrorCode.INVALID_WEBSOCKET_DESTINATION);
-        }
-    }
-
-    private Long parseHashedDestinationUserId(String destination) {
-        try {
-            return hashIdsUtils.decode(destination.substring(USER_QUEUE_PREFIX.length()));
-        } catch (RuntimeException e) {
-            throw new BusinessException(ErrorCode.INVALID_WEBSOCKET_DESTINATION);
         }
     }
 

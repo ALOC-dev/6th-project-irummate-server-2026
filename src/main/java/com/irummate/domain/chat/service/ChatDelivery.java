@@ -5,7 +5,6 @@ import com.irummate.domain.chat.dto.ChatMessageEventDto;
 import com.irummate.domain.chat.dto.ChatMessageResponseDto;
 import com.irummate.domain.chat.dto.ChatNotificationDto;
 import com.irummate.domain.chat.dto.ChatReadEventDto;
-import com.irummate.domain.chat.entity.ChatRoomType;
 import com.irummate.domain.chat.repository.ChatMessageRepository;
 import com.irummate.domain.chat.repository.ChatRoomRepository;
 import com.irummate.domain.user.repository.UsersRepository;
@@ -25,7 +24,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-public class RecruitmentChatDelivery {
+public class ChatDelivery {
 
     private final ChatRoomRepository rooms;
     private final LoginSessionRepository loginSessions;
@@ -68,7 +67,7 @@ public class RecruitmentChatDelivery {
 
     private List<ChatSocketSessions.Socket> lockRoomAndFindRecipients(Long roomId) {
         // Membership changes take the same row lock. The outbound guard also checks already queued frames.
-        if (rooms.findByIdForUpdate(roomId).filter(room -> room.getType() == ChatRoomType.RECRUITMENT).isEmpty()) {
+        if (rooms.findByIdForUpdate(roomId).isEmpty()) {
             return List.of();
         }
         List<ChatSocketSessions.Socket> candidates = sockets.activeSockets();

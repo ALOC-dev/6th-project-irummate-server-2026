@@ -1,6 +1,5 @@
 package com.irummate.global;
 
-import com.irummate.domain.chat.service.ChatRoomAccessService;
 import com.irummate.domain.chat.service.ChatSocketSessions;
 import com.irummate.domain.user.entity.UserRole;
 import com.irummate.global.security.AccessTokenAuthenticationService;
@@ -8,7 +7,6 @@ import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
 import com.irummate.global.config.WebSocketConfig;
 import com.irummate.global.jwt.WebSocketPrincipal;
-import com.irummate.global.util.HashIdsUtils;
 import com.irummate.global.websocket.WebSocketStompErrorHandler;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -27,18 +25,13 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 class WebSocketConfigTest {
 
     private final AccessTokenAuthenticationService authenticationService = mock(AccessTokenAuthenticationService.class);
-    private final ChatRoomAccessService chatRoomAccessService = mock(ChatRoomAccessService.class);
-    private final HashIdsUtils hashIdsUtils = mock(HashIdsUtils.class);
     private final WebSocketConfig config = new WebSocketConfig(
             authenticationService,
-            chatRoomAccessService,
-            hashIdsUtils,
             mock(WebSocketStompErrorHandler.class),
             mock(ChatSocketSessions.class)
     );
@@ -107,21 +100,20 @@ class WebSocketConfigTest {
                                 .isEqualTo(ErrorCode.WEBSOCKET_UNAUTHORIZED));
     }
 
-    @Test
-    void rejectsRoomSubscriptionByNonParticipant() {
+    @ParameterizedTest
+    @ValueSource(strings = {"/topic/room/7", "/queue/user/legacy"})
+    void rejectsLegacyChatSubscriptions(String destination) {
         givenActiveUser(2L);
-        doThrow(new BusinessException(ErrorCode.NOT_CHAT_PARTICIPANT))
-                .when(chatRoomAccessService).requireMatchRoomTopic(7L, 2L);
         Message<byte[]> message = stompMessage(
                 StompCommand.SUBSCRIBE,
-                "/topic/room/7",
+                destination,
                 principal(2L)
         );
 
         assertThatThrownBy(() -> inboundInterceptor().preSend(message, channel))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         org.assertj.core.api.Assertions.assertThat(exception.getErrorCode())
-                                .isEqualTo(ErrorCode.NOT_CHAT_PARTICIPANT));
+                                .isEqualTo(ErrorCode.INVALID_WEBSOCKET_DESTINATION));
     }
 
     @Test

@@ -325,8 +325,6 @@ class IrummateApplicationTests {
         assertThat(chatService.getTotalUnreadCountValue(second.getId())).isEqualTo(1);
         assertThat(chatService.getTotalUnreadCountValue(first.getId())).isZero();
         assertThat(chatService.getTotalUnreadCountValue(third.getId())).isEqualTo(1);
-        assertThat(chatService.createNotification(groupRoom.getId(), first.getId(), third.getId(), groupMessage)
-                .getUnreadCount()).isEqualTo(1);
         assertThat(chatService.getMessages(groupRoom.getId(), third.getId(), null, 10).getMessages().getFirst().getIsRead())
                 .isNull();
         assertThat(assertThrows(BusinessException.class,

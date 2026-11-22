@@ -2,7 +2,6 @@ package com.irummate.domain.chat.repository;
 
 import com.irummate.domain.chat.dto.ChatRoomListItemDto;
 import com.irummate.domain.chat.entity.ChatRoom;
-import com.irummate.domain.chat.entity.ChatRoomType;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -21,9 +20,6 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT room FROM ChatRoom room WHERE room.recruitment.id = :recruitmentId")
     Optional<ChatRoom> findByRecruitmentIdForUpdate(@Param("recruitmentId") Long recruitmentId);
-
-    @Query("SELECT room.type FROM ChatRoom room WHERE room.id = :roomId")
-    Optional<ChatRoomType> findTypeById(@Param("roomId") Long roomId);
 
     long countByStatus(com.irummate.domain.chat.entity.ChatRoomStatus status);
 
@@ -119,16 +115,4 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
             """)
     List<ChatRoom> findMatchRoomsByParticipantId(@Param("userId") Long userId);
 
-    // 현재 유저의 상대방 userId를 조회한다.
-    @Query("""
-            SELECT CASE
-                WHEN mr.userLow.id = :userId THEN mr.userHigh.id
-                ELSE mr.userLow.id
-            END
-            FROM ChatRoom cr
-            JOIN cr.matchRequest mr
-            WHERE cr.id = :roomId
-              AND (mr.userLow.id = :userId OR mr.userHigh.id = :userId)
-            """)
-    Optional<Long> findPartnerIdByRoomIdAndUserId(@Param("roomId") Long roomId, @Param("userId") Long userId);
 }
