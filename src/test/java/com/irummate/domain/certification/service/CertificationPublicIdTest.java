@@ -21,9 +21,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Clock;
@@ -106,6 +107,7 @@ class CertificationPublicIdTest {
         var response = adminService.getCertification(certification.getPublicId());
 
         assertThat(response.getCertificationId()).isEqualTo(certification.getPublicId());
+        assertThat(response.getImageUrl()).isEqualTo("https://example.com/image");
         verify(repository, never()).findById(anyLong());
     }
 
@@ -120,11 +122,37 @@ class CertificationPublicIdTest {
     @Test
     void adminListReturnsPublicUuid() {
         Certification certification = certification(CertificationStatus.PENDING);
-        when(repository.findAllByOrderByCreatedAtDesc(any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(certification)));
+        var page = PageRequest.of(1, 1);
+        when(repository.findAdminCertifications(CertificationStatus.PENDING, semester, page))
+                .thenReturn(new PageImpl<>(List.of(certification), page, 3));
 
-        assertThat(adminService.getCertifications(null, 0).getFirst().getCertificationId())
-                .isEqualTo(certification.getPublicId());
+        var response = adminService.getCertifications(CertificationStatus.PENDING, semester, 1, 1);
+
+        assertThat(response.certifications()).singleElement().satisfies(item -> {
+            assertThat(item.getCertificationId()).isEqualTo(certification.getPublicId());
+            assertThat(item.getUserId()).isEqualTo(hashIdsUtils.encode(user.getId()));
+            assertThat(item.getImageUrl()).isNull();
+        });
+        assertThat(response.page()).isEqualTo(1);
+        assertThat(response.size()).isEqualTo(1);
+        assertThat(response.totalElements()).isEqualTo(3);
+        assertThat(response.totalPages()).isEqualTo(3);
+        assertThat(response.hasNext()).isTrue();
+        verifyNoInteractions(s3Utils);
+    }
+
+    @Test
+    void veryHighPageReturnsTotalsWithoutPassingOverflowedOffsetToJpa() {
+        when(repository.countAdminCertifications(null, semester)).thenReturn(3L);
+
+        var response = adminService.getCertifications(null, semester, Integer.MAX_VALUE, 100);
+
+        assertThat(response.certifications()).isEmpty();
+        assertThat(response.totalElements()).isEqualTo(3);
+        assertThat(response.totalPages()).isEqualTo(1);
+        assertThat(response.hasNext()).isFalse();
+        verify(repository).countAdminCertifications(null, semester);
+        verifyNoMoreInteractions(repository);
     }
 
     @ParameterizedTest
@@ -169,16 +197,57 @@ class CertificationPublicIdTest {
             assertThat(response.getCertificationId()).isEqualTo(certification.getPublicId());
             assertThat(certification.getCertificationStatus()).isEqualTo(CertificationStatus.APPROVED);
             assertThat(certification.getReviewedBy()).isSameAs(admin);
+            assertThat(certification.getReviewedAt()).isNotNull().isEqualTo(response.getReviewedAt());
             assertThat(certification.getExpiresAt()).isEqualTo(expectedExpiration);
             semesters.verify(SemesterUtils::currentSemester, times(1));
+            verify(repository).flush();
+            verifyNoInteractions(s3Utils);
         }
+    }
+
+    @Test
+    void rejectionRecordsReviewerTimeAndReasonWithoutSigningImage() {
+        Certification certification = certification(CertificationStatus.PENDING);
+        when(repository.findByPublicId(certification.getPublicId())).thenReturn(Optional.of(certification));
+        Users admin = Users.builder().oauthId("admin").nickname("관리자").build();
+        when(usersRepository.findById(2L)).thenReturn(Optional.of(admin));
+        String comment = "가".repeat(500);
+
+        var response = adminService.rejectCertification(2L, certification.getPublicId(), rejectionRequest(0L, comment));
+
+        assertThat(response.getStatus()).isEqualTo("REJECTED");
+        assertThat(response.getAdminComment()).isEqualTo(comment);
+        assertThat(certification.getReviewedBy()).isSameAs(admin);
+        assertThat(certification.getReviewedAt()).isNotNull().isEqualTo(response.getReviewedAt());
+        assertThat(certification.getExpiresAt()).isNull();
+        verify(repository).flush();
+        verifyNoInteractions(s3Utils);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = CertificationStatus.class, names = {"APPROVED", "REJECTED", "EXPIRED"})
+    void processedCertificationCannotBeApprovedOrRejected(CertificationStatus status) {
+        Certification certification = certification(status);
+        ReflectionTestUtils.setField(certification, "version", 1L);
+        when(repository.findByPublicId(certification.getPublicId())).thenReturn(Optional.of(certification));
+
+        var approval = assertThrows(BusinessException.class,
+                () -> adminService.approveCertification(2L, certification.getPublicId(), approvalRequest(0L)));
+        var rejection = assertThrows(BusinessException.class,
+                () -> adminService.rejectCertification(2L, certification.getPublicId(), rejectionRequest(0L, "사유")));
+
+        assertThat(approval.getErrorCode()).isEqualTo(ErrorCode.CERTIFICATION_ALREADY_PROCESSED);
+        assertThat(rejection.getErrorCode()).isEqualTo(ErrorCode.CERTIFICATION_ALREADY_PROCESSED);
+        assertThat(certification.getCertificationStatus()).isEqualTo(status);
+        verify(repository, never()).flush();
+        verify(usersRepository, never()).findById(2L);
     }
 
     @ParameterizedTest
     @ValueSource(ints = {-1, Integer.MIN_VALUE})
     void negativeAdminPageIsRejectedBeforeQuery(int page) {
         BusinessException exception = assertThrows(BusinessException.class,
-                () -> adminService.getCertifications(null, page));
+                () -> adminService.getCertifications(null, null, page, 15));
 
         assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT);
         verifyNoInteractions(repository);
@@ -204,9 +273,7 @@ class CertificationPublicIdTest {
         Certification certification = certification(CertificationStatus.PENDING);
         ReflectionTestUtils.setField(certification, "version", 2L);
         when(repository.findByPublicId(certification.getPublicId())).thenReturn(Optional.of(certification));
-        AdminCertificationRejectRequestDto request = new AdminCertificationRejectRequestDto();
-        ReflectionTestUtils.setField(request, "expectedVersion", 0L);
-        ReflectionTestUtils.setField(request, "adminComment", "다시 제출해주세요.");
+        AdminCertificationRejectRequestDto request = rejectionRequest(0L, "다시 제출해주세요.");
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> adminService.rejectCertification(2L, certification.getPublicId(), request));
@@ -219,6 +286,13 @@ class CertificationPublicIdTest {
     private AdminCertificationApproveRequestDto approvalRequest(Long version) {
         AdminCertificationApproveRequestDto request = new AdminCertificationApproveRequestDto();
         ReflectionTestUtils.setField(request, "expectedVersion", version);
+        return request;
+    }
+
+    private AdminCertificationRejectRequestDto rejectionRequest(Long version, String comment) {
+        AdminCertificationRejectRequestDto request = new AdminCertificationRejectRequestDto();
+        ReflectionTestUtils.setField(request, "expectedVersion", version);
+        ReflectionTestUtils.setField(request, "adminComment", comment);
         return request;
     }
 

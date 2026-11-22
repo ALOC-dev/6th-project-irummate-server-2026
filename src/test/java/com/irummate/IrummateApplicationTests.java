@@ -65,6 +65,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -93,6 +94,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -840,6 +843,176 @@ class IrummateApplicationTests {
         mockMvc.perform(get("/api/certifications/me").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("data.status").value("EXPIRED"));
+    }
+
+    @Test
+    @Transactional
+    void adminCertificationListPaginatesFiltersAndFetchesUserDetailsInOneContentQuery() {
+        String semester = "2096-1";
+        Long withDetails = savePreferences("admin-list-with-details", 1, 1, "FEMALE");
+        Users withoutDetails = Users.builder().oauthId("admin-list-without-details").nickname("admin-list").build();
+        entityManager.persist(withoutDetails);
+
+        var olderId = certificationRepository.saveAndFlush(Certification.builder()
+                .user(entityManager.getReference(Users.class, withDetails)).semester(semester)
+                .imageKey("certifications/first.png").build());
+        var newerId = certificationRepository.saveAndFlush(Certification.builder()
+                .user(withoutDetails).semester(semester).imageKey("certifications/second.png").build());
+        var rejected = certificationRepository.saveAndFlush(Certification.builder()
+                .user(withoutDetails).semester("2096-2").imageKey("certifications/third.png")
+                .certificationStatus(CertificationStatus.REJECTED).build());
+        var sameSemesterRejected = certificationRepository.saveAndFlush(Certification.builder()
+                .user(entityManager.getReference(Users.class, savePreferences("admin-list-rejected", 1, 1, "FEMALE")))
+                .semester(semester).imageKey("certifications/fourth.png")
+                .certificationStatus(CertificationStatus.REJECTED).build());
+        jdbcTemplate.update("update certifications set created_at = ? where id in (?, ?)",
+                LocalDateTime.of(2026, 1, 1, 0, 0), olderId.getId(), newerId.getId());
+        entityManager.clear();
+
+        var statistics = entityManagerFactory.unwrap(org.hibernate.SessionFactory.class).getStatistics();
+        boolean previouslyEnabled = statistics.isStatisticsEnabled();
+        statistics.setStatisticsEnabled(true);
+        try {
+            statistics.clear();
+            var first = adminCertificationService.getCertifications(CertificationStatus.PENDING, semester, 0, 1);
+            assertThat(first.certifications()).singleElement().satisfies(item -> {
+                assertThat(item.getCertificationId()).isEqualTo(newerId.getPublicId());
+                assertThat(item.getRealName()).isNull();
+                assertThat(item.getNickname()).isEqualTo(withoutDetails.getNickname());
+                assertThat(item.getImageUrl()).isNull();
+            });
+            assertThat(first.totalElements()).isEqualTo(2);
+            assertThat(first.totalPages()).isEqualTo(2);
+            assertThat(first.hasNext()).isTrue();
+            assertThat(statistics.getPrepareStatementCount()).isEqualTo(2);
+
+            entityManager.clear();
+            statistics.clear();
+            var last = adminCertificationService.getCertifications(CertificationStatus.PENDING, semester, 1, 2);
+            assertThat(last.certifications()).isEmpty();
+            assertThat(last.totalElements()).isEqualTo(2);
+            assertThat(last.hasNext()).isFalse();
+            assertThat(statistics.getPrepareStatementCount()).isEqualTo(2);
+
+            entityManager.clear();
+            statistics.clear();
+            var allInSemester = adminCertificationService.getCertifications(null, semester, 0, 15);
+            assertThat(allInSemester.certifications()).hasSize(3);
+            assertThat(allInSemester.totalElements()).isEqualTo(3);
+            assertThat(allInSemester.certifications().getFirst().getCertificationId())
+                    .isEqualTo(sameSemesterRejected.getPublicId());
+            assertThat(allInSemester.certifications().getLast().getCertificationId()).isEqualTo(olderId.getPublicId());
+            assertThat(allInSemester.certifications().getLast().getRealName()).isNotBlank();
+            assertThat(statistics.getPrepareStatementCount()).isEqualTo(1);
+
+            var rejectedOnly = adminCertificationService.getCertifications(CertificationStatus.REJECTED, null, 0, 100);
+            assertThat(rejectedOnly.certifications()).allSatisfy(item -> assertThat(item.getStatus()).isEqualTo("REJECTED"));
+            assertThat(rejectedOnly.certifications()).extracting(item -> item.getCertificationId())
+                    .contains(rejected.getPublicId(), sameSemesterRejected.getPublicId());
+            var unfiltered = adminCertificationService.getCertifications(null, null, 0, 100);
+            assertThat(unfiltered.certifications()).extracting(item -> item.getCertificationId())
+                    .contains(olderId.getPublicId(), newerId.getPublicId(), rejected.getPublicId(), sameSemesterRejected.getPublicId());
+            verifyNoInteractions(s3Utils);
+        } finally {
+            statistics.setStatisticsEnabled(previouslyEnabled);
+        }
+    }
+
+    @Test
+    @Transactional
+    void adminCertificationDetailReturnsPresignedImageAndRejectingPersistsReview() throws Exception {
+        Users applicant = Users.builder().oauthId("admin-review-applicant").nickname("applicant").build();
+        Users admin = Users.builder().oauthId("admin-review-admin").nickname("admin").build();
+        entityManager.persist(applicant);
+        entityManager.persist(admin);
+        var certification = certificationRepository.saveAndFlush(Certification.builder()
+                .user(applicant).semester(SemesterUtils.currentSemester()).imageKey("certifications/detail.png").build());
+        var authentication = authentication(new TestingAuthenticationToken(admin.getId(), null, "ROLE_ADMIN"));
+        String path = "/api/admin/certifications/" + certification.getPublicId();
+        String url = "https://example.com/image?signature=test";
+        when(s3Utils.createDownloadUrl(certification.getImageKey())).thenReturn(url);
+
+        mockMvc.perform(get(path).with(authentication))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.imageUrl").value(url));
+
+        String request = """
+                {"expectedVersion":0,"adminComment":"%s"}
+                """.formatted("가".repeat(500));
+        mockMvc.perform(patch(path + "/reject").with(authentication).contentType("application/json").content(request))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("REJECTED"))
+                .andExpect(jsonPath("$.data.adminComment").value("가".repeat(500)))
+                .andExpect(jsonPath("$.data.version").value(1))
+                .andExpect(jsonPath("$.data.reviewedAt").exists())
+                .andExpect(jsonPath("$.data.imageUrl").doesNotExist());
+
+        entityManager.clear();
+        var saved = certificationRepository.findByPublicId(certification.getPublicId()).orElseThrow();
+        assertThat(saved.getReviewedBy().getId()).isEqualTo(admin.getId());
+        assertThat(saved.getReviewedAt()).isNotNull();
+        assertThat(saved.getAdminComment()).isEqualTo("가".repeat(500));
+        assertThat(saved.getExpiresAt()).isNull();
+
+        mockMvc.perform(patch(path + "/reject").with(authentication).contentType("application/json").content(request))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CERTIFICATION_ALREADY_PROCESSED"));
+    }
+
+    @Test
+    void concurrentAdminReviewReturnsConflictAfterAnotherReviewCommits() throws Exception {
+        CertificationFixture fixture = saveCertificationFixture(CertificationStatus.PENDING, SemesterUtils.currentSemester());
+        var transactions = new TransactionTemplate(transactionManager);
+        Long adminId = transactions.execute(transaction -> {
+            Users admin = Users.builder().oauthId("admin-concurrent-review").nickname("admin").build();
+            ReflectionTestUtils.setField(admin, "role", UserRole.ADMIN);
+            entityManager.persist(admin);
+            return admin.getId();
+        });
+        var authentication = authentication(new TestingAuthenticationToken(adminId, null, "ROLE_ADMIN"));
+        String path = "/api/admin/certifications/" + fixture.publicId();
+        var competingTransaction = new TransactionTemplate(transactionManager);
+        competingTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+
+        try {
+            // 승인과 거절이 같은 버전을 읽도록 두 트랜잭션의 실행 순서를 제어한다.
+            transactions.executeWithoutResult(rejection -> {
+                var pending = certificationRepository.findByPublicId(fixture.publicId()).orElseThrow();
+                assertThat(pending.getVersion()).isZero();
+                competingTransaction.executeWithoutResult(approval -> {
+                    var request = new AdminCertificationApproveRequestDto();
+                    ReflectionTestUtils.setField(request, "expectedVersion", 0L);
+                    var approved = adminCertificationService.approveCertification(adminId, fixture.publicId(), request);
+                    assertThat(approved.getStatus()).isEqualTo("APPROVED");
+                    assertThat(approved.getVersion()).isEqualTo(1L);
+                });
+                try {
+                    mockMvc.perform(patch(path + "/reject").with(authentication).contentType("application/json")
+                                    .content("{\"expectedVersion\":0,\"adminComment\":\"동시 거절\"}"))
+                            .andExpect(status().isConflict())
+                            .andExpect(jsonPath("$.code").value("UPDATE_CONFLICT"));
+                } catch (Exception e) {
+                    throw new AssertionError(e);
+                } finally {
+                    rejection.setRollbackOnly();
+                }
+            });
+
+            transactions.executeWithoutResult(transaction -> {
+                var saved = certificationRepository.findByPublicId(fixture.publicId()).orElseThrow();
+                assertThat(saved.getCertificationStatus()).isEqualTo(CertificationStatus.APPROVED);
+                assertThat(saved.getVersion()).isEqualTo(1L);
+                assertThat(saved.getReviewedBy().getId()).isEqualTo(adminId);
+                assertThat(saved.getReviewedAt()).isNotNull();
+            });
+            mockMvc.perform(patch(path + "/approve").with(authentication).contentType("application/json")
+                            .content("{\"expectedVersion\":0}"))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("CERTIFICATION_ALREADY_PROCESSED"));
+        } finally {
+            deleteCertificationFixture(fixture.userId());
+            jdbcTemplate.update("delete from users where id = ?", adminId);
+        }
     }
 
     @Test
