@@ -3,6 +3,7 @@ package com.irummate.domain.admin.dto;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -16,5 +17,6 @@ public class AdminCertificationRejectRequestDto {
     private Long expectedVersion;
 
     @NotBlank(message = "거절 사유는 필수입니다.")
+    @Size(max = 500, message = "거절 사유는 500자를 초과할 수 없습니다.")
     private String adminComment;
 }

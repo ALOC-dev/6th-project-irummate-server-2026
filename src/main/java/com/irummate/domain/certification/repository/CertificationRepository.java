@@ -21,12 +21,26 @@ public interface CertificationRepository extends JpaRepository<Certification, Lo
     // 공개 UUID로 인증 요청 조회
     Optional<Certification> findByPublicId(UUID publicId);
 
-    Page<Certification> findAllByOrderByCreatedAtDesc(Pageable pageable);
+    String ADMIN_FILTER = """
+            where (:status is null or c.certificationStatus = :status)
+              and (:semester is null or c.semester = :semester)
+            """;
+    String ADMIN_COUNT = "select count(c) from Certification c " + ADMIN_FILTER;
 
-    Page<Certification> findAllByCertificationStatusOrderByCreatedAtDesc(
-            CertificationStatus certificationStatus,
+    @Query(value = """
+            select c from Certification c
+            join fetch c.user u
+            left join fetch u.userDetails
+            """ + ADMIN_FILTER + "order by c.createdAt desc, c.id desc",
+            countQuery = ADMIN_COUNT)
+    Page<Certification> findAdminCertifications(
+            @Param("status") CertificationStatus status,
+            @Param("semester") String semester,
             Pageable pageable
     );
+
+    @Query(ADMIN_COUNT)
+    long countAdminCertifications(@Param("status") CertificationStatus status, @Param("semester") String semester);
 
     Optional<Certification> findByUser_IdAndSemester(Long userId, String semester);
 
