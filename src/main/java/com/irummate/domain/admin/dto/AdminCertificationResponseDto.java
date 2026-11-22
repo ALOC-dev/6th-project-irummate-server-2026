@@ -1,5 +1,6 @@
 package com.irummate.domain.admin.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.irummate.domain.certification.entity.Certification;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -11,33 +12,34 @@ import java.util.UUID;
 @AllArgsConstructor
 public class AdminCertificationResponseDto {
 
-    private UUID certificationId;
-    private Long version;
-    private String userId;
-    private String userRealName;
-    private String userNickname;
-    private String semester;
-    private String imageURL;
-    private String status;
-    private String adminComment;
-    private LocalDateTime createdAt;
-    private LocalDateTime reviewedAt;
-    private LocalDateTime expiresAt;
+    private final UUID certificationId;
+    private final Long version;
+    private final String userId;
+    private final String realName;
+    private final String nickname;
+    private final String semester;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private final String imageUrl;
+    private final String status;
+    private final String adminComment;
+    private final LocalDateTime createdAt;
+    private final LocalDateTime reviewedAt;
+    private final LocalDateTime expiresAt;
 
     public static AdminCertificationResponseDto from(Certification certification,
-                                                     UUID certificationId,
                                                      String userId,
-                                                     String imageURL) {
-
+                                                     String imageUrl) {
+        var user = certification.getUser();
+        var details = user.getUserDetails();
 
         return new AdminCertificationResponseDto(
-                certificationId,
+                certification.getPublicId(),
                 certification.getVersion(),
                 userId,
-                certification.getUser().getUserDetails() == null ? null : certification.getUser().getUserDetails().getRealName(),
-                certification.getUser().getNickname(),
+                details == null ? null : details.getRealName(),
+                user.getNickname(),
                 certification.getSemester(),
-                imageURL,
+                imageUrl,
                 certification.getCertificationStatus().name(),
                 certification.getAdminComment(),
                 certification.getCreatedAt(),
