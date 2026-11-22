@@ -97,7 +97,7 @@ class StompSecurityIntegrationTest extends SecurityIntegrationSupport {
     void brokerSendForgeryIsRejectedAndExistingSubscriberReceivesNothing() throws Exception {
         var receiver = connect(access(BOB, bobSession));
         String destination = "/queue/user/" + hashIds.encode(BOB);
-        BlockingQueue<String> received = subscribe(receiver, BOB, destination);
+        BlockingQueue<String> received = subscribe(receiver, BOB, "/user/queue/chat-notifications");
         var attacker = connect(access(ALICE, aliceSession));
 
         attacker.session.send(destination, "forged-notification".getBytes(StandardCharsets.UTF_8));
@@ -112,7 +112,7 @@ class StompSecurityIntegrationTest extends SecurityIntegrationSupport {
     void rawServerMessageFrameCannotBypassClientSendRestrictions() throws Exception {
         var receiver = connect(access(BOB, bobSession));
         String destination = "/queue/user/" + hashIds.encode(BOB);
-        var received = subscribe(receiver, BOB, destination);
+        var received = subscribe(receiver, BOB, "/user/queue/chat-notifications");
         BlockingQueue<String> frames = new LinkedBlockingQueue<>();
         var rawClient = new StandardWebSocketClient();
         var raw = rawClient.execute(new TextWebSocketHandler() {
@@ -146,9 +146,13 @@ class StompSecurityIntegrationTest extends SecurityIntegrationSupport {
     @Test
     void normalApplicationSendStillDeliversRoomMessageAndPersonalNotification() throws Exception {
         var receiver = connect(access(BOB, bobSession));
-        var roomMessages = subscribe(receiver, BOB, "/topic/room/" + roomId);
-        var notifications = subscribe(receiver, BOB, "/queue/user/" + hashIds.encode(BOB));
+        var roomMessages = subscribe(receiver, BOB, "/user/queue/chat-events");
+        var notifications = subscribe(receiver, BOB, "/user/queue/chat-notifications");
         var sender = connect(access(ALICE, aliceSession));
+        var senderEvents = subscribe(sender, ALICE, "/user/queue/chat-events");
+        var senderNotifications = subscribe(sender, ALICE, "/user/queue/chat-notifications");
+        var outsider = connect(access(OUTSIDER, outsiderSession));
+        var outsiderEvents = subscribe(outsider, OUTSIDER, "/user/queue/chat-events");
 
         sendChat(sender, "hello");
 
@@ -156,9 +160,18 @@ class StompSecurityIntegrationTest extends SecurityIntegrationSupport {
         String notification = notifications.poll(5, TimeUnit.SECONDS);
         assertThat(roomMessage).isNotNull();
         assertThat(notification).isNotNull();
-        assertThat(json.readTree(roomMessage).path("message").asString()).isEqualTo("hello");
-        assertThat(json.readTree(roomMessage).path("senderId").asString()).isEqualTo(hashIds.encode(ALICE));
+        var event = json.readTree(roomMessage);
+        assertThat(event.path("message").asString()).isEqualTo("hello");
+        assertThat(event.path("senderId").asString()).isEqualTo(hashIds.encode(ALICE));
+        assertThat(event.path("isRead").isBoolean()).isTrue();
+        assertThat(event.path("isRead").asBoolean()).isFalse();
         assertThat(json.readTree(notification).path("message").asString()).isEqualTo("hello");
+        assertThat(senderEvents.poll(5, TimeUnit.SECONDS)).contains("hello");
+        assertThat(readChat(roomId, event.path("messageId").asLong(), access(BOB, bobSession))).isEqualTo(200);
+        assertThat(senderEvents.poll(5, TimeUnit.SECONDS)).contains("\"type\":\"READ\"");
+        assertThat(roomMessages.poll(5, TimeUnit.SECONDS)).contains("\"type\":\"READ\"");
+        assertThat(outsiderEvents.poll(300, TimeUnit.MILLISECONDS)).isNull();
+        assertThat(senderNotifications).isEmpty();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM chat_messages", Long.class)).isEqualTo(1);
     }
 
@@ -186,7 +199,6 @@ class StompSecurityIntegrationTest extends SecurityIntegrationSupport {
         var removedNotifications = subscribe(removed, BOB, "/user/queue/chat-notifications");
         var removedOtherNotifications = subscribe(removedOtherDevice, BOB, "/user/queue/chat-notifications");
         var chatErrors = subscribe(removed, BOB, "/user/queue/chat-errors");
-        var matchEvents = subscribe(removed, BOB, "/topic/room/" + roomId);
         host.session.send(chatHeaders(), ("{\"roomId\":" + groupRoom + ",\"message\":\"before removal\"}")
                 .getBytes(StandardCharsets.UTF_8));
         assertThat(hostEvents.poll(5, TimeUnit.SECONDS)).contains("before removal");
@@ -203,12 +215,7 @@ class StompSecurityIntegrationTest extends SecurityIntegrationSupport {
         String after = hostEvents.poll(5, TimeUnit.SECONDS);
         assertThat(after).contains("after removal");
         long messageId = json.readTree(after).path("messageId").asLong();
-        HttpRequest read = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/chat/rooms/" + groupRoom + "/read"))
-                .header("Authorization", "Bearer " + access(OUTSIDER, outsiderSession))
-                .header("Content-Type", "application/json")
-                .method("PATCH", HttpRequest.BodyPublishers.ofString("{\"lastReadMessageId\":" + messageId + "}"))
-                .timeout(Duration.ofSeconds(5)).build();
-        assertThat(http.send(read, HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(200);
+        assertThat(readChat(groupRoom, messageId, access(OUTSIDER, outsiderSession))).isEqualTo(200);
         assertThat(hostEvents.poll(5, TimeUnit.SECONDS)).contains("\"type\":\"READ\"");
 
         assertThat(request("GET", "/api/chat/rooms/" + groupRoom + "/messages", access(BOB, bobSession), null).statusCode())
@@ -218,12 +225,13 @@ class StompSecurityIntegrationTest extends SecurityIntegrationSupport {
         assertThat(chatErrors.poll(5, TimeUnit.SECONDS)).contains("NOT_CHAT_PARTICIPANT");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM chat_messages WHERE room_id = ?", Long.class, groupRoom))
                 .isEqualTo(3);
-        sendChat(host, "other room still works");
-        assertThat(matchEvents.poll(5, TimeUnit.SECONDS)).contains("other room still works");
         assertThat(removedEvents.poll(300, TimeUnit.MILLISECONDS)).isNull();
         assertThat(removedOtherEvents).isEmpty();
         assertThat(removedNotifications).isEmpty();
         assertThat(removedOtherNotifications).isEmpty();
+        sendChat(host, "other room still works");
+        assertThat(removedEvents.poll(5, TimeUnit.SECONDS)).contains("other room still works", "\"roomId\":" + roomId);
+        assertThat(removedOtherEvents.poll(5, TimeUnit.SECONDS)).contains("other room still works");
     }
 
     @Test
@@ -278,7 +286,7 @@ class StompSecurityIntegrationTest extends SecurityIntegrationSupport {
         Instant expiry = Instant.now().plusSeconds(change.equals("jwt-expired") ? 4 : 900);
         var connection = connect(customToken(hashIds.encode(ALICE), aliceSession.toString(), "access", expiry, SECRET));
         var receiver = connect(access(BOB, bobSession));
-        var messages = subscribe(receiver, BOB, "/topic/room/" + roomId);
+        var messages = subscribe(receiver, BOB, "/user/queue/chat-events");
         switch (change) {
             case "logout-send", "logout-subscribe" -> assertThat(
                     request("POST", "/api/auth/logout", null, "refreshToken=alice-refresh").statusCode()).isEqualTo(200);
@@ -291,7 +299,7 @@ class StompSecurityIntegrationTest extends SecurityIntegrationSupport {
             default -> throw new IllegalArgumentException(change);
         }
         if (change.equals("logout-subscribe")) {
-            connection.session.subscribe("/topic/room/" + roomId, discardingHandler());
+            connection.session.subscribe("/user/queue/chat-events", discardingHandler());
         } else {
             // A later Authorization header cannot replace CONNECT's authenticated identity/session.
             var headers = chatHeaders();
@@ -314,10 +322,19 @@ class StompSecurityIntegrationTest extends SecurityIntegrationSupport {
     }
 
     @Test
-    void otherUsersPersonalSubscriptionIsRejected() throws Exception {
+    void legacyPersonalSubscriptionIsRejected() throws Exception {
         var connection = connect(access(ALICE, aliceSession));
         connection.session.subscribe("/queue/user/" + hashIds.encode(BOB), discardingHandler());
-        assertThat(connection.errors.poll(5, TimeUnit.SECONDS)).contains("FORBIDDEN");
+        assertThat(connection.errors.poll(5, TimeUnit.SECONDS)).contains("INVALID_WEBSOCKET_DESTINATION");
+    }
+
+    private int readChat(long targetRoomId, long messageId, String token) throws Exception {
+        HttpRequest read = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/chat/rooms/" + targetRoomId + "/read"))
+                .header("Authorization", "Bearer " + token)
+                .header("Content-Type", "application/json")
+                .method("PATCH", HttpRequest.BodyPublishers.ofString("{\"lastReadMessageId\":" + messageId + "}"))
+                .timeout(Duration.ofSeconds(5)).build();
+        return http.send(read, HttpResponse.BodyHandlers.discarding()).statusCode();
     }
 
     private void sendChat(Connection connection, String message) {

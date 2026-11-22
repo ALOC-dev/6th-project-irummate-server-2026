@@ -330,12 +330,13 @@ JSONB·9차원 벡터 저장/조회, 추천 정렬과 필터, Jackson 3 응답, 
 
 읽음 요청에는 같은 방에 속한 양수 메시지 ID가 필요합니다. 읽음 위치가 실제로 전진하면 `READ` 이벤트를 발행합니다. 클라이언트는 한 사용자에 대해 받은 `lastReadMessageId` 중 가장 큰 값을 적용합니다. 방 목록의 `type`은 `MATCH` 또는 `RECRUITMENT`입니다. `MATCH`는 기존 상대방 필드를 제공하고, `RECRUITMENT`는 `recruitment` 객체에 게시글 정보와 참가자 수를 제공합니다. 메시지의 `isRead`는 1:1 방에서 수신자의 읽음 위치로 계산되며 모집방에서는 `null`입니다.
 
-| 방 유형 | `MESSAGE`·`READ` 구독 | 개인 알림 구독 |
-| --- | --- | --- |
-| `MATCH` | `/topic/room/{roomId}` | `/queue/user/{공개사용자ID}` |
-| `RECRUITMENT` | `/user/queue/chat-events` | `/user/queue/chat-notifications` |
+| 구독 주소 | 수신 내용 |
+| --- | --- |
+| `/user/queue/chat-events` | `MATCH`·`RECRUITMENT` 방의 `MESSAGE`·`READ` 이벤트 |
+| `/user/queue/chat-notifications` | `MATCH`·`RECRUITMENT` 방의 개인 알림과 미읽음 개수 |
+| `/user/queue/chat-errors` | 현재 연결에 대한 메시지 전송 오류 |
 
-모집방 개인 채널은 연결마다 한 번씩 구독하고 각 이벤트의 `roomId`로 방을 구분합니다. 글이 생성될 때 방과 작성자 멤버가 함께 생성되고, 참여·탈퇴·강퇴도 채팅 멤버 상태에 반영됩니다. 강퇴된 사용자의 해당 방 이벤트는 열린 연결에서도 차단됩니다.
+각 개인 채널은 연결마다 한 번씩 구독하고 메시지·읽음 이벤트와 알림의 `roomId`로 방을 구분합니다. 모집글이 생성될 때 방과 작성자 멤버가 함께 생성되고, 참여·탈퇴·강퇴도 채팅 멤버 상태에 반영됩니다. 강퇴된 사용자의 해당 방 이벤트는 열린 연결에서도 차단됩니다.
 
 ### 관리자 `/api/admin`
 
