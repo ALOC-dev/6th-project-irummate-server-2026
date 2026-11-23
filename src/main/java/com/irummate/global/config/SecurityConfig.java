@@ -35,6 +35,7 @@ public class SecurityConfig {
                 "http://localhost:5173",
                 "https://www.irummate.com",
                 "https://irummate.com",
+                "https://test.irummate.com",
                 "capacitor://localhost",
                 "https://localhost"
         ));
