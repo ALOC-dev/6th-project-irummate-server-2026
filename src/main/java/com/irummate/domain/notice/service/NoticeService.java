@@ -7,9 +7,11 @@ import com.irummate.domain.notice.dto.NoticeIngestResponseDto;
 import java.util.List;
 import java.util.TreeMap;
 import com.irummate.domain.notice.dto.NoticesResponseDto;
+import com.irummate.domain.notice.event.NoticesIngested;
 import com.irummate.domain.notice.repository.NoticeRepository;
 import com.irummate.global.exception.BusinessException;
 import com.irummate.global.exception.ErrorCode;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -20,10 +22,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class NoticeService {
     private final NoticeRepository noticeRepository;
     private final CalendarExtractionJobRepository extractionJobs;
+    private final ApplicationEventPublisher events;
 
-    public NoticeService(NoticeRepository noticeRepository, CalendarExtractionJobRepository extractionJobs) {
+    public NoticeService(NoticeRepository noticeRepository, CalendarExtractionJobRepository extractionJobs,
+                         ApplicationEventPublisher events) {
         this.noticeRepository = noticeRepository;
         this.extractionJobs = extractionJobs;
+        this.events = events;
     }
 
     @Transactional
@@ -51,6 +56,7 @@ public class NoticeService {
                 updated++;
             }
         }
+        events.publishEvent(new NoticesIngested());
         return new NoticeIngestResponseDto(inserted, updated, unchanged);
     }
 
