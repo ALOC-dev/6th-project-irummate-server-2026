@@ -18,7 +18,7 @@ class PrivacyConsentIntegrationTest extends SecurityIntegrationSupport {
              "gender":"MALE","department":"Engineering","phoneNumber":"010-1111-2222"}
             """;
     private static final String ONBOARDING = """
-            {"profileCollection":{"agreed":true,"documentVersion":"1.0"},
+            {"termsOfService":{"agreed":true,"documentVersion":"1.0"},"profileCollection":{"agreed":true,"documentVersion":"1.0"},
              "aiCertTraining":{"agreed":false,"documentVersion":"1.0"}}
             """;
 
@@ -58,11 +58,27 @@ class PrivacyConsentIntegrationTest extends SecurityIntegrationSupport {
                 HttpResponse.BodyHandlers.ofString());
         assertEquals(204, first.get().statusCode());
         assertEquals(204, retry.get().statusCode());
-        assertEquals(2, historyCount());
+        assertEquals(3, historyCount());
         assertEquals("AGREED", consentStatus(alice, 0));
         assertEquals("DECLINED", consentStatus(alice, 1));
         assertEquals("NOT_DECIDED", consentStatus(bob, 0));
-        assertEquals(201, jsonRequest("POST", "/api/users/details", alice, DETAILS).statusCode());
+        assertCode(400, "AGE_REQUIREMENT_NOT_MET",
+                jsonRequest("POST", "/api/users/details", alice, DETAILS.replace("\"age\":20", "\"age\":13")));
+        assertEquals(201, jsonRequest("POST", "/api/users/details", alice,
+                DETAILS.replace("\"age\":20", "\"age\":14")).statusCode());
+        assertCode(400, "AGE_REQUIREMENT_NOT_MET",
+                jsonRequest("PATCH", "/api/users/details", alice, "{\"age\":13}"));
+
+        jdbc.update("UPDATE privacy_consents SET terms_of_service_status='NOT_DECIDED', "
+                + "terms_of_service_document_version=NULL, terms_of_service_updated_at=NULL WHERE user_id=?", ALICE);
+        assertCode(403, "TERMS_CONSENT_REQUIRED",
+                jsonRequest("PATCH", "/api/users/details", alice, "{\"age\":20}"));
+        String terms = CONSENTS + "/TERMS_OF_SERVICE";
+        assertEquals(204, jsonRequest("PUT", terms, alice,
+                "{\"action\":\"AGREE\",\"documentVersion\":\"1.0\"}").statusCode());
+        assertEquals(204, jsonRequest("PUT", terms, alice,
+                "{\"action\":\"AGREE\",\"documentVersion\":\"1.0\"}").statusCode());
+        assertEquals(4, historyCount());
 
         String ai = CONSENTS + "/AI_CERT_TRAINING";
         assertEquals(204, jsonRequest("PUT", ai, alice, """
@@ -72,7 +88,7 @@ class PrivacyConsentIntegrationTest extends SecurityIntegrationSupport {
         assertEquals(204, jsonRequest("PUT", ai, alice, "{\"action\":\"WITHDRAW\"}").statusCode());
         assertEquals(204, jsonRequest("POST", CONSENTS + "/onboarding", alice, ONBOARDING).statusCode());
         assertEquals("WITHDRAWN", consentStatus(alice, 1));
-        assertEquals(4, historyCount());
+        assertEquals(6, historyCount());
         assertCode(403, "CONSENT_NOT_WITHDRAWABLE",
                 jsonRequest("PUT", CONSENTS + "/PROFILE_COLLECTION", alice, "{\"action\":\"WITHDRAW\"}"));
     }

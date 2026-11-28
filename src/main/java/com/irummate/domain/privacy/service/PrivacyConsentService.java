@@ -40,32 +40,37 @@ public class PrivacyConsentService {
         var current = consents.findById(userId).orElseGet(() -> new PrivacyConsents(userId));
         return Arrays.stream(ConsentType.values()).map(type -> {
             var choice = current.choice(type);
-            return new ConsentView(type, type == PROFILE_COLLECTION, choice.status().name(),
+            return new ConsentView(type, type != AI_CERT_TRAINING, choice.status().name(),
                     choice.documentVersion(), currentVersion(type), choice.updatedAt());
         }).toList();
     }
 
     @Transactional
-    public void submitOnboarding(Long userId, boolean profileAgreed, String profileVersion,
+    public void submitOnboarding(Long userId, boolean termsAgreed, String termsVersion,
+                                 boolean profileAgreed, String profileVersion,
                                  boolean aiAgreed, String aiVersion) {
         if (!profileAgreed) {
             throw new BusinessException(ErrorCode.PROFILE_CONSENT_REQUIRED);
         }
+        if (!termsAgreed) throw new BusinessException(ErrorCode.TERMS_CONSENT_REQUIRED);
         lockMember(userId);
         var aiAction = aiAgreed ? AGREE : DECLINE;
         var existing = consents.findById(userId);
         if (existing.isPresent()) {
-            if (matchesFirstChoice(userId, PROFILE_COLLECTION, AGREE, profileVersion)
+            if (matchesFirstChoice(userId, TERMS_OF_SERVICE, AGREE, termsVersion)
+                    && matchesFirstChoice(userId, PROFILE_COLLECTION, AGREE, profileVersion)
                     && matchesFirstChoice(userId, AI_CERT_TRAINING, aiAction, aiVersion)) {
                 return;
             }
             throw new BusinessException(ErrorCode.ONBOARDING_CONSENT_ALREADY_SUBMITTED);
         }
 
+        validateVersion(TERMS_OF_SERVICE, termsVersion);
         validateVersion(PROFILE_COLLECTION, profileVersion);
         validateVersion(AI_CERT_TRAINING, aiVersion);
         var current = new PrivacyConsents(userId);
         Instant now = clock.instant();
+        record(current, userId, TERMS_OF_SERVICE, AGREE, termsVersion, now);
         record(current, userId, PROFILE_COLLECTION, AGREE, profileVersion, now);
         record(current, userId, AI_CERT_TRAINING, aiAction, aiVersion, now);
         consents.save(current);
@@ -110,6 +115,30 @@ public class PrivacyConsentService {
         }
     }
 
+    @Transactional
+    public void agreeRequiredConsent(Long userId, ConsentType type, ConsentChoice.Action action, String version) {
+        if (type != TERMS_OF_SERVICE && type != PROFILE_COLLECTION) throw new BusinessException(ErrorCode.INVALID_CONSENT_TYPE);
+        if (action == WITHDRAW) throw new BusinessException(ErrorCode.CONSENT_NOT_WITHDRAWABLE);
+        if (action != AGREE) throw new BusinessException(ErrorCode.INVALID_INPUT);
+        lockMember(userId);
+        validateVersion(type, version);
+        var current = consents.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PROFILE_CONSENT_REQUIRED));
+        var previous = current.choice(type);
+        if (previous.status() == ConsentChoice.Status.WITHDRAWN)
+            throw new BusinessException(ErrorCode.CONSENT_REQUIRES_SUPPORT);
+        if (previous.status() != AGREED || !version.equals(previous.documentVersion()))
+            record(current, userId, type, AGREE, version, clock.instant());
+    }
+
+    public void requireRequiredConsents(Long userId) {
+        requireProfileConsent(userId);
+        boolean agreed = consents.findById(userId).map(c -> c.choice(TERMS_OF_SERVICE))
+                .filter(c -> c.status() == AGREED && currentVersion(TERMS_OF_SERVICE).equals(c.documentVersion()))
+                .isPresent();
+        if (!agreed) throw new BusinessException(ErrorCode.TERMS_CONSENT_REQUIRED);
+    }
+
     private void lockMember(Long userId) {
         var user = users.findByIdForUpdate(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
@@ -147,6 +176,7 @@ public class PrivacyConsentService {
 
     private String currentVersion(ConsentType type) {
         return switch (type) {
+            case TERMS_OF_SERVICE -> "1.0";
             case PROFILE_COLLECTION -> PROFILE_DOCUMENT_VERSION;
             case AI_CERT_TRAINING -> AI_DOCUMENT_VERSION;
         };

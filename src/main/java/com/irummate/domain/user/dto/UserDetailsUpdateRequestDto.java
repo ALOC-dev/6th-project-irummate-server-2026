@@ -1,7 +1,6 @@
 package com.irummate.domain.user.dto;
 
 import jakarta.validation.constraints.AssertTrue;
-import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Null;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -13,7 +12,6 @@ public class UserDetailsUpdateRequestDto {
     private String realName;
     private String studentId;
 
-    @Min(value = 1, message = "age must be at least 1.")
     private Integer age;
 
     // 성별은 최초 등록 후 수정 불가

@@ -1,6 +1,5 @@
 package com.irummate.domain.user.dto;
 
-import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -18,7 +17,6 @@ public class UserDetailsRequestDto {
     private String studentId;
 
     @NotNull(message = "age는 필수입니다.")
-    @Min(value = 1, message = "age는 1 이상이어야 합니다.")
     private Integer age;
 
     @NotBlank(message = "gender는 필수입니다.")

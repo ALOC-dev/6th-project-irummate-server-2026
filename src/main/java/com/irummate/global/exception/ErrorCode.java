@@ -33,6 +33,9 @@ public enum ErrorCode {
 
     // ── 403 ──
     FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
+    TERMS_CONSENT_REQUIRED(HttpStatus.FORBIDDEN, "서비스 이용약관 동의가 필요합니다."),
+    CONSENT_REQUIRES_SUPPORT(HttpStatus.FORBIDDEN, "철회 처리된 필수 동의는 운영팀에 문의해 주세요."),
+    AGE_REQUIREMENT_NOT_MET(HttpStatus.BAD_REQUEST, "만 14세 이상만 가입할 수 있습니다."),
     PROFILE_CONSENT_REQUIRED(HttpStatus.FORBIDDEN, "회원 상세정보 수집·이용 동의가 필요합니다."),
     CONSENT_NOT_WITHDRAWABLE(HttpStatus.FORBIDDEN, "필수 동의 철회는 앱 설정의 운영팀 문의로 요청해 주세요."),
     USER_BLOCKED(HttpStatus.FORBIDDEN, "해당 사용자와의 상호작용이 제한되어 있습니다."),

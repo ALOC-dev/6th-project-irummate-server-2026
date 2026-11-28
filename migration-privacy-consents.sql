@@ -37,3 +37,8 @@ END $$;
 
 CREATE INDEX IF NOT EXISTS idx_privacy_consent_history_latest
     ON privacy_consent_history (user_id, consent_type, id DESC);
+
+-- Existing members remain NOT_DECIDED; do not synthesize consent history.
+ALTER TABLE privacy_consents ADD COLUMN IF NOT EXISTS terms_of_service_status VARCHAR(20) NOT NULL DEFAULT 'NOT_DECIDED';
+ALTER TABLE privacy_consents ADD COLUMN IF NOT EXISTS terms_of_service_document_version VARCHAR(20);
+ALTER TABLE privacy_consents ADD COLUMN IF NOT EXISTS terms_of_service_updated_at TIMESTAMPTZ;

@@ -1548,7 +1548,7 @@ class IrummateApplicationTests {
         Users user = Users.builder().oauthId("initial-gender").nickname("initial-gender").build();
         entityManager.persist(user);
         entityManager.flush();
-        privacyConsentService.submitOnboarding(user.getId(), true, "1.0", false, "1.0");
+        privacyConsentService.submitOnboarding(user.getId(), true, "1.0", true, "1.0", false, "1.0");
 
         mockMvc.perform(post("/api/users/details")
                         .with(authentication(new TestingAuthenticationToken(user.getId(), null, "ROLE_USER")))

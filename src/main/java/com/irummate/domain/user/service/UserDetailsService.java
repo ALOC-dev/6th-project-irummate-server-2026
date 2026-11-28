@@ -74,6 +74,7 @@ public class UserDetailsService {
      */
     @Transactional
     public UserDetailsResponseDto createDetails(Long userId, UserDetailsRequestDto request) {
+        validateAge(request.getAge());
         Long userPk = Long.valueOf(userId);
         Users user = usersRepository.findByIdForUpdate(userPk)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
@@ -83,7 +84,7 @@ public class UserDetailsService {
             throw new BusinessException(ErrorCode.DETAILS_ALREADY_EXISTS);
         }
 
-        privacyConsentService.requireProfileConsent(userPk);
+        privacyConsentService.requireRequiredConsents(userPk);
 
         //입력받은 데이터(Dto)를 바탕으로 실제 DB 테이블 모양새의 객체(Entity)를 조립합니다.
         UserDetails userDetails = UserDetails.builder()
@@ -106,6 +107,10 @@ public class UserDetailsService {
      */
     @Transactional
     public UserDetailsResponseDto updateDetails(Long userId, UserDetailsUpdateRequestDto request) {
+        if (request.getAge() != null) validateAge(request.getAge());
+        usersRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        privacyConsentService.requireRequiredConsents(userId);
         Long userPk = Long.valueOf(userId);
 
         UserDetails userDetails = userDetailsRepository.findById(userPk)
@@ -211,6 +216,11 @@ public class UserDetailsService {
         certificationRepository.deleteAllByUser_Id(userPk);
 
         runExternalCleanupAfterCommit(oauthId, imageKeys);
+    }
+
+    private void validateAge(Integer age) {
+        if (age == null) throw new BusinessException(ErrorCode.INVALID_INPUT);
+        if (age < 14) throw new BusinessException(ErrorCode.AGE_REQUIREMENT_NOT_MET);
     }
 
     private boolean valueChanged(String current, String requested) {
