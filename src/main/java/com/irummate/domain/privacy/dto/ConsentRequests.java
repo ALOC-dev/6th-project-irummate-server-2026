@@ -8,7 +8,8 @@ public final class ConsentRequests {
     private ConsentRequests() {
     }
 
-    public record OnboardingRequest(@Valid @NotNull Agreement profileCollection,
+    public record OnboardingRequest(@Valid @NotNull Agreement termsOfService,
+                                    @Valid @NotNull Agreement profileCollection,
                                     @Valid @NotNull Agreement aiCertTraining) {
     }
 

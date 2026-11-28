@@ -33,24 +33,23 @@ public class PrivacyConsentController {
                                        @Valid @RequestBody OnboardingRequest request) {
         var profile = request.profileCollection();
         var ai = request.aiCertTraining();
-        service.submitOnboarding(userId, profile.agreed(), profile.documentVersion(), ai.agreed(), ai.documentVersion());
+        service.submitOnboarding(userId, request.termsOfService().agreed(), request.termsOfService().documentVersion(), profile.agreed(), profile.documentVersion(), ai.agreed(), ai.documentVersion());
         return ResponseEntity.noContent().build();
     }
 
     @PutMapping("/{type}")
     public ResponseEntity<Void> change(@AuthenticationPrincipal Long userId, @PathVariable String type,
                                        @Valid @RequestBody ChangeRequest request) {
-        if (ConsentType.PROFILE_COLLECTION.name().equals(type)
-                && request.action() == ConsentChoice.Action.WITHDRAW) {
-            throw new BusinessException(ErrorCode.CONSENT_NOT_WITHDRAWABLE);
+        ConsentType consentType;
+        try { consentType = ConsentType.valueOf(type); }
+        catch (IllegalArgumentException e) { throw new BusinessException(ErrorCode.INVALID_CONSENT_TYPE); }
+        if (consentType == ConsentType.AI_CERT_TRAINING) {
+            if (request.action() == ConsentChoice.Action.DECLINE)
+                throw new BusinessException(ErrorCode.INVALID_INPUT);
+            service.changeAiConsent(userId, request.action(), request.documentVersion());
+        } else {
+            service.agreeRequiredConsent(userId, consentType, request.action(), request.documentVersion());
         }
-        if (!ConsentType.AI_CERT_TRAINING.name().equals(type)) {
-            throw new BusinessException(ErrorCode.INVALID_CONSENT_TYPE);
-        }
-        if (request.action() == ConsentChoice.Action.DECLINE) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT);
-        }
-        service.changeAiConsent(userId, request.action(), request.documentVersion());
         return ResponseEntity.noContent().build();
     }
 }

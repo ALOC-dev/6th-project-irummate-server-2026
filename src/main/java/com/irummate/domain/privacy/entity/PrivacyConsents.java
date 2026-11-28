@@ -28,12 +28,21 @@ public class PrivacyConsents {
     })
     private ConsentChoice aiCertTraining = ConsentChoice.UNDECIDED;
 
+    @Embedded
+    @AttributeOverrides({
+        @AttributeOverride(name = "status", column = @Column(name = "terms_of_service_status", nullable = false, length = 20)),
+        @AttributeOverride(name = "documentVersion", column = @Column(name = "terms_of_service_document_version", length = 20)),
+        @AttributeOverride(name = "updatedAt", column = @Column(name = "terms_of_service_updated_at"))
+    })
+    private ConsentChoice termsOfService = ConsentChoice.UNDECIDED;
+
     public PrivacyConsents(Long userId) {
         this.userId = userId;
     }
 
     public ConsentChoice choice(ConsentType type) {
         return switch (type) {
+            case TERMS_OF_SERVICE -> termsOfService;
             case PROFILE_COLLECTION -> profileCollection;
             case AI_CERT_TRAINING -> aiCertTraining;
         };
@@ -41,6 +50,7 @@ public class PrivacyConsents {
 
     public void change(ConsentType type, ConsentChoice choice) {
         switch (type) {
+            case TERMS_OF_SERVICE -> termsOfService = choice;
             case PROFILE_COLLECTION -> profileCollection = choice;
             case AI_CERT_TRAINING -> aiCertTraining = choice;
         }
