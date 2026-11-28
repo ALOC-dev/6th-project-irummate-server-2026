@@ -31,6 +31,12 @@ public class DormitoryNotice {
     @Column(nullable = false, columnDefinition = "text")
     private String url;
 
+    @Column(name = "body_text", columnDefinition = "text")
+    private String bodyText;
+
+    @Column(name = "body_version", nullable = false, columnDefinition = "integer default 0")
+    private int bodyVersion;
+
     @Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "timestamp with time zone")
     private Instant createdAt;
 

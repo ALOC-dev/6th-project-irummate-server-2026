@@ -1,5 +1,6 @@
 package com.irummate.domain.notice.service;
 
+import com.irummate.domain.calendar.repository.CalendarExtractionJobRepository;
 import com.irummate.domain.notice.dto.NoticeResponseDto;
 import com.irummate.domain.notice.dto.NoticeIngestRequestDto;
 import com.irummate.domain.notice.dto.NoticeIngestResponseDto;
@@ -18,9 +19,11 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class NoticeService {
     private final NoticeRepository noticeRepository;
+    private final CalendarExtractionJobRepository extractionJobs;
 
-    public NoticeService(NoticeRepository noticeRepository) {
+    public NoticeService(NoticeRepository noticeRepository, CalendarExtractionJobRepository extractionJobs) {
         this.noticeRepository = noticeRepository;
+        this.extractionJobs = extractionJobs;
     }
 
     @Transactional
@@ -32,8 +35,16 @@ public class NoticeService {
         for (var item : unique.values()) {
             List<Boolean> result = noticeRepository.upsert(item.getExternalId(), item.getTitle(),
                     item.getPublishedAt(), item.getUrl());
+            var revisions = item.getBodyText() == null || item.getBodyText().isBlank()
+                    ? List.<NoticeRepository.BodyRevision>of()
+                    : noticeRepository.updateBody(item.getExternalId(), item.getBodyText().strip());
+            revisions.forEach(revision -> extractionJobs.enqueue(revision.getId(), revision.getBodyVersion()));
             if (result.isEmpty()) {
-                unchanged++;
+                if (revisions.isEmpty()) {
+                    unchanged++;
+                } else {
+                    updated++;
+                }
             } else if (result.getFirst()) {
                 inserted++;
             } else {

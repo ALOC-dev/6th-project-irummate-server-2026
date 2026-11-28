@@ -38,6 +38,9 @@ public class NoticeIngestRequestDto {
         @Size(max = 2048)
         private String url;
 
+        @Size(max = 50000)
+        private String bodyText;
+
         @AssertTrue(message = "학교 공지 상세 URL과 externalId가 일치해야 합니다.")
         @JsonIgnore
         public boolean isValidSourceUrl() {

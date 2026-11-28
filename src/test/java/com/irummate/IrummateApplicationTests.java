@@ -1628,6 +1628,31 @@ class IrummateApplicationTests {
     }
 
     @Test
+    @Transactional
+    void noticeBodyQueuesEachRevisionOnlyOnce() throws Exception {
+        String item = """
+                {"notices":[{"externalId":"987654321","title":"기숙사 일정","publishedAt":"2026-11-15",
+                "url":"https://dormitory.uos.ac.kr/dormitory/web/bbs/dormitory_notice/987654321"%s}]}
+                """;
+
+        for (String fields : List.of(", \"bodyText\":\"11월 16일 신청\"", ", \"bodyText\":\"11월 16일 신청\"",
+                "", ", \"bodyText\":\"11월 17일 신청\"")) {
+            mockMvc.perform(post("/internal/notices")
+                            .header("X-Ingest-Key", "test-ingest-key")
+                            .contentType("application/json")
+                            .content(item.formatted(fields)))
+                    .andExpect(status().isOk());
+        }
+
+        var versions = entityManager.createNativeQuery("""
+                SELECT j.body_version FROM calendar_extraction_jobs j
+                JOIN dormitory_notices n ON n.id = j.notice_id
+                WHERE n.external_id = '987654321' ORDER BY j.body_version
+                """, Integer.class).getResultList();
+        assertThat(versions).containsExactly(1, 2);
+    }
+
+    @Test
     void noticeIngestJsonFormatErrorUsesCommonCode() throws Exception {
         mockMvc.perform(post("/internal/notices")
                         .header("X-Ingest-Key", "test-ingest-key")
